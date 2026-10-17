@@ -1,0 +1,9 @@
+{
+  "name": "quest-shop-fixture",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node tests/run-tests.js",
+    "trace": "node scripts/trace-login.js"
+  }
+}
