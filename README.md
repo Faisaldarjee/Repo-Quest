@@ -55,6 +55,7 @@ On Linux, `make test` is also available.
 
 ```bash
 npm run repoquest -- scan fixtures/quest-shop
+npm run repoquest -- generate fixtures/quest-shop
 npm run repoquest -- validate quests/quest-shop.yml
 npm run repoquest -- init ./my-repository
 ```

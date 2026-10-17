@@ -1,11 +1,11 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { readQuestManifest, scanRepository } from "./core/index.ts";
+import { planLocalMissions, readQuestManifest, scanRepository } from "./core/index.ts";
 
 const QUEST_TEMPLATE = `schemaVersion: 1\nid: my-repository\ntitle: My Repository Quest\ndescription: A verified onboarding path for this repository.\nmissions: []\n`;
 
 function help(): void {
-  console.log(`RepoQuest — Duolingo for codebases\n\nCommands:\n  init [path]       Create a .repoquest quest workspace\n  scan [path]       Scan files, scripts, routes, tests, and symbols\n  validate [file]   Validate a quest YAML manifest\n`);
+  console.log(`RepoQuest — Duolingo for codebases\n\nCommands:\n  init [path]       Create a .repoquest quest workspace\n  scan [path]       Scan files, scripts, routes, tests, and symbols\n  generate [path]   Generate deterministic mission candidates\n  validate [file]   Validate a quest YAML manifest\n`);
 }
 
 async function main(): Promise<void> {
@@ -22,6 +22,11 @@ async function main(): Promise<void> {
 
   if (command === "scan") {
     console.log(JSON.stringify(await scanRepository(target), null, 2));
+    return;
+  }
+
+  if (command === "generate") {
+    console.log(JSON.stringify(planLocalMissions(await scanRepository(target)), null, 2));
     return;
   }
 

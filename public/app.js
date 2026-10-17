@@ -20,7 +20,7 @@ function renderStats(data) {
   $("#stats").innerHTML = [
     ["REPOSITORY", "quest-shop", "demo fixture"],
     ["FILES MAPPED", data.scan.files, `${data.scan.symbols} symbols found`],
-    ["MISSIONS", data.progress.total, `${data.progress.completed} completed`],
+    ["MISSIONS GENERATED", data.planner.candidates, `${data.progress.completed} verified`],
     ["VERIFIERS", "3", "command · trace · test"],
   ].map(([label, value, detail]) => `<div class="stat-card"><span>${label}</span><strong>${value}</strong><small>${detail}</small></div>`).join("");
 }

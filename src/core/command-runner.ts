@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { relative, resolve, sep } from "node:path";
 import {
   createCommandResult,
+  createSafeCommand,
   type CommandResult,
   type SafeCommand,
   validateSafeCommand,
@@ -16,13 +17,10 @@ export interface CommandRunnerOptions {
 }
 
 const DEFAULT_ALLOWED_EXECUTABLES = new Set(["node", "npm", "npx", "pnpm", "yarn", "python", "pytest"]);
-const SECRET_PATTERNS = [
-  /(api[_-]?key|token|secret|password)\s*[=:]\s*[^\s\n]+/gi,
-  /Bearer\s+[A-Za-z0-9._~+\-/]+=*/gi,
-];
-
 function redact(value: string): string {
-  return SECRET_PATTERNS.reduce((current, pattern) => current.replace(pattern, "$1=[REDACTED]"), value);
+  return value
+    .replace(/(api[_-]?key|token|secret|password)\s*[=:]\s*[^\s\n]+/gi, (_match, key: string) => `${key}=[REDACTED]`)
+    .replace(/Bearer\s+[A-Za-z0-9._~+\-/]+=*/gi, "Bearer [REDACTED]");
 }
 
 function withinRoot(root: string, candidate: string): boolean {
@@ -46,7 +44,7 @@ export function runSafeCommand(command: SafeCommand, options: CommandRunnerOptio
   if (!checked.valid) {
     return Promise.resolve(
       createCommandResult({
-        command: command as SafeCommand,
+        command: createSafeCommand("node"),
         status: "blocked",
         error: checked.errors.map((error) => `${error.path}: ${error.message}`).join("; "),
       }),

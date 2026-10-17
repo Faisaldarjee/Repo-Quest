@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { extname, join, normalize, resolve, sep } from "node:path";
 import {
   readQuestManifest,
+  planLocalMissions,
   runSafeCommand,
   scanRepository,
   type CommandResult,
@@ -113,6 +114,7 @@ function missionViews(manifest: QuestManifest) {
 async function statePayload() {
   await workspaceReady;
   const [manifest, scan] = await Promise.all([readQuestManifest(QUEST_PATH), scanRepository(DEMO_WORKSPACE_ROOT)]);
+  const planner = planLocalMissions(scan);
   return {
     product: {
       name: "RepoQuest",
@@ -127,6 +129,7 @@ async function statePayload() {
       symbols: scan.exportedSymbols.length,
       packageScripts: scan.packageScripts,
     },
+    planner: { mode: planner.mode, candidates: planner.candidates.length },
     missions: missionViews(manifest),
     progress: { completed: demoState.passed.size, total: manifest.missions.length },
     activity: demoState.activity,
