@@ -20,6 +20,10 @@ export interface QuestMission {
   readonly objective: string;
   readonly validation?: MissionValidationPlan;
   readonly tags?: readonly string[];
+  readonly concept?: string;
+  readonly difficulty?: "beginner" | "intermediate" | "advanced";
+  readonly estimatedMinutes?: number;
+  readonly hints?: readonly string[];
 }
 
 export interface QuestManifest {
@@ -99,6 +103,15 @@ function validateTags(value: unknown, path: string, errors: ValidationIssue[]): 
   return Object.freeze(value.map((tag) => (tag as string).trim()));
 }
 
+function validateHints(value: unknown, path: string, errors: ValidationIssue[]): readonly string[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.some((hint) => !nonEmptyString(hint))) {
+    errors.push({ path, message: "must be an array of non-empty strings" });
+    return undefined;
+  }
+  return Object.freeze(value.map((hint) => (hint as string).trim()));
+}
+
 /**
  * Validate and normalize untrusted JSON-like data as a version 1 manifest.
  * Unknown fields are ignored so a newer producer can still be inspected by
@@ -159,12 +172,30 @@ export function validateQuestManifest(input: unknown): ManifestValidationResult 
 
       const validation = validateMissionValidationPlan(rawMission.validation, `${path}.validation`, errors);
       const tags = validateTags(rawMission.tags, `${path}.tags`, errors);
+      const hints = validateHints(rawMission.hints, `${path}.hints`, errors);
+      const concept = rawMission.concept === undefined ? undefined : addStringIssue(errors, `${path}.concept`, rawMission.concept, "concept") ? (rawMission.concept as string).trim() : undefined;
+      const difficulty = rawMission.difficulty === undefined || rawMission.difficulty === "beginner" || rawMission.difficulty === "intermediate" || rawMission.difficulty === "advanced"
+        ? rawMission.difficulty
+        : undefined;
+      if (rawMission.difficulty !== undefined && difficulty === undefined) {
+        errors.push({ path: `${path}.difficulty`, message: "must be beginner, intermediate, or advanced" });
+      }
+      const rawEstimatedMinutes = rawMission.estimatedMinutes;
+      const validEstimatedMinutes = typeof rawEstimatedMinutes === "number" && Number.isInteger(rawEstimatedMinutes) && rawEstimatedMinutes >= 1 && rawEstimatedMinutes <= 240;
+      if (rawEstimatedMinutes !== undefined && !validEstimatedMinutes) {
+        errors.push({ path: `${path}.estimatedMinutes`, message: "must be an integer between 1 and 240" });
+      }
+      const estimatedMinutes = validEstimatedMinutes ? rawEstimatedMinutes : undefined;
       missions.push({
         id: missionId,
         title: missionTitle,
         objective,
         ...(validation === undefined ? {} : { validation }),
         ...(tags === undefined ? {} : { tags }),
+        ...(concept === undefined ? {} : { concept }),
+        ...(difficulty === undefined ? {} : { difficulty }),
+        ...(estimatedMinutes === undefined ? {} : { estimatedMinutes }),
+        ...(hints === undefined ? {} : { hints }),
       });
     });
   }

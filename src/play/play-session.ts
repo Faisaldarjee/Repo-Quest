@@ -71,7 +71,17 @@ export interface PlayState {
   /** Compatibility alias for clients that call these changes. */
   readonly changes: readonly FileChangeEvent[];
   readonly watcher: { readonly mode: PlayWatcherMode; readonly polling: boolean };
+  readonly analytics: readonly MissionAnalytics[];
   readonly workspaceRoot: string;
+}
+
+export interface MissionAnalytics {
+  readonly missionId: string;
+  readonly attempts: number;
+  readonly passes: number;
+  readonly failures: number;
+  readonly totalDurationMs: number;
+  readonly lastStatus: "passed" | "failed";
 }
 
 export interface MissionVerification {
@@ -178,6 +188,7 @@ class LocalPlaySession implements PlaySession {
   private disposed = false;
   private watcherModeValue: PlayWatcherMode = "polling";
   private readonly passed = new Set<string>();
+  private readonly analytics = new Map<string, { attempts: number; passes: number; failures: number; totalDurationMs: number; lastStatus: "passed" | "failed" }>();
   private activityMessages: string[] = [];
   private activityEvents: ActivityEvent[] = [];
   private fileChanges: FileChangeEvent[] = [];
@@ -257,12 +268,14 @@ class LocalPlaySession implements PlaySession {
       fileChanges: Object.freeze([...this.fileChanges]),
       changes: Object.freeze([...this.fileChanges]),
       watcher: { mode: this.watcherModeValue, polling: this.watcherModeValue === "polling" },
+      analytics: Object.freeze([...this.analytics.entries()].map(([missionId, value]) => Object.freeze({ missionId, ...value }))),
       workspaceRoot: this.workspaceRoot,
     };
   }
 
   public async verifyMission(missionId: string): Promise<MissionVerification> {
     this.assertActive();
+    const startedAt = Date.now();
     const normalizedId = typeof missionId === "string" ? missionId.trim() : "";
     if (normalizedId.length === 0) throw new TypeError("missionId is required");
     const mission = this.manifest.missions.find((candidate) => candidate.id === normalizedId);
@@ -298,6 +311,15 @@ class LocalPlaySession implements PlaySession {
       this.addActivity(`${normalizedId} failed; captured command output is available`);
     }
 
+    const current = this.analytics.get(normalizedId) ?? { attempts: 0, passes: 0, failures: 0, totalDurationMs: 0, lastStatus: passed ? "passed" as const : "failed" as const };
+    this.analytics.set(normalizedId, {
+      attempts: current.attempts + 1,
+      passes: current.passes + (passed ? 1 : 0),
+      failures: current.failures + (passed ? 0 : 1),
+      totalDurationMs: current.totalDurationMs + (Date.now() - startedAt),
+      lastStatus: passed ? "passed" : "failed",
+    });
+
     return { passed, missionId: normalizedId, result: finalResult, results };
   }
 
@@ -316,6 +338,7 @@ class LocalPlaySession implements PlaySession {
     this.workspaceRoot = nextWorkspace;
     this.manifest = manifest;
     this.passed.clear();
+    this.analytics.clear();
     this.activityMessages = [];
     this.activityEvents = [];
     this.fileChanges = [];

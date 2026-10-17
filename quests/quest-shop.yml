@@ -6,6 +6,12 @@ missions:
   - id: boot-the-shop
     title: Boot the Shop
     objective: Run the fixture test suite and confirm the repository is healthy.
+    concept: Project setup
+    difficulty: beginner
+    estimatedMinutes: 3
+    hints:
+      - Start with the package.json scripts instead of opening every source file.
+      - A green baseline tells you the repository is ready for a first contribution.
     tags: [setup, tests]
     validation:
       baseline:
@@ -26,6 +32,12 @@ missions:
   - id: trace-login-flow
     title: Follow the Login Flow
     objective: Trace a login request from the route into the authentication service.
+    concept: Runtime navigation
+    difficulty: beginner
+    estimatedMinutes: 8
+    hints:
+      - Where does a POST /login request first enter the application?
+      - Follow the function call until you find the service that checks credentials.
     tags: [navigation, runtime]
     validation:
       baseline:
@@ -46,6 +58,12 @@ missions:
   - id: fix-invalid-login
     title: Fix Invalid Login
     objective: Make unknown users receive a safe 401 response instead of crashing.
+    concept: Error handling
+    difficulty: intermediate
+    estimatedMinutes: 12
+    hints:
+      - Compare the unknown-user branch with the wrong-password branch.
+      - The verifier cares about the HTTP status, not a new authentication system.
     tags: [debugging, mutation]
     validation:
       baseline:

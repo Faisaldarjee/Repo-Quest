@@ -6,6 +6,7 @@ const state = {
   busy: false,
   scanning: false,
   preview: false,
+  hints: {},
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -106,10 +107,11 @@ function renderLanding() {
 
 function renderStats(data) {
   const verifierCount = data.missions.filter((mission) => Boolean(mission.validation)).length;
+  const attempts = (data.analytics || []).reduce((total, item) => total + item.attempts, 0);
   const stats = [
     ["FILES MAPPED", number(data.scan.files), `${number(data.scan.symbols)} symbols located`],
     ["ROUTES FOUND", number(data.scan.routes), `${number(data.scan.tests)} test files nearby`],
-    ["MISSION CANDIDATES", number(data.planner.candidates), `${number(data.progress.completed)} verified so far`],
+    ["MISSION CANDIDATES", number(data.planner.candidates), `${number(data.progress.completed)} verified · ${number(attempts)} attempts`],
     ["REAL VERIFIERS", number(verifierCount), `${data.planner.mode || "local"} execution mode`],
   ];
   $("#stats").innerHTML = stats.map(([label, value, detail], index) => `
@@ -132,7 +134,10 @@ function renderRepoGraph(data) {
       <span class="graph-particle particle-one"></span><span class="graph-particle particle-two"></span>
     </div>
      <div class="graph-root"><span class="root-mark">⌁</span><strong>${escapeHtml(data.project?.name || data.manifest.id || "repository")}</strong><small>${escapeHtml(data.watcher?.mode || "local")} · disposable workspace</small></div>
-    <div class="graph-nodes">${nodes.map(([label, value, detail]) => `<div class="graph-node"><span class="node-label">${label}</span><strong>${number(value)}</strong><small>${detail}</small></div>`).join("")}</div>`;
+    <div class="graph-nodes">${nodes.map(([label, value, detail], index) => {
+      const revealed = index === 0 || data.progress.completed >= index;
+      return `<div class="graph-node ${revealed ? "revealed" : "fogged"}"><span class="node-label">${label}</span><strong>${revealed ? number(value) : "??"}</strong><small>${revealed ? detail : "hidden until unlocked"}</small></div>`;
+    }).join("")}</div>`;
 }
 
 function renderMissions(data) {
@@ -174,6 +179,11 @@ function renderMissionPanel(data) {
   $("#mission-signal").textContent = mission.status === "completed" ? "verified" : mission.status === "locked" ? "waiting on previous step" : "ready to run";
   $("#mission-objective").textContent = mission.objective;
   $("#mission-meta").innerHTML = (mission.tags || ["verified challenge"]).map((tag) => `<span>${escapeHtml(tag)}</span>`).join("");
+  const hintIndex = state.hints[mission.id] || 0;
+  const hints = mission.hints || [];
+  const mentorBox = $("#mentor-box");
+  mentorBox.hidden = hints.length === 0 || hintIndex === 0;
+  $("#mentor-text").textContent = hints[Math.min(hintIndex - 1, hints.length - 1)] || "Ask yourself where this behavior enters the repository.";
   $("#terminal").className = `terminal ${statusClass}`;
   $("#terminal-status").textContent = terminalStatus;
   $("#terminal-command").textContent = commandText(command);
@@ -191,6 +201,7 @@ function renderMissionPanel(data) {
   }
   if (status === "completed") actions.push('<span class="success-copy"><i>✓</i> Mission complete — next node unlocked</span>');
   if (!hasVerifier && status === "available") actions.push('<span class="success-copy"><i>↗</i> Brief ready — this node is presentation-only in the MVP</span>');
+  if (hints.length > 0 && status !== "locked" && hintIndex < hints.length) actions.push(`<button class="hint-button" data-action="hint" data-mission-id="${escapeHtml(mission.id)}" type="button">Ask the mentor <span>${hintIndex}/${hints.length} hints</span></button>`);
   $("#mission-actions").innerHTML = actions.join("");
 
   const success = $("#success-panel");
@@ -251,6 +262,7 @@ async function handleAction(event) {
       state.selected = "boot-the-shop";
       state.lastResult = null;
       state.preview = false;
+      state.hints = {};
       await api("/api/reset", { method: "POST", body: "{}" });
       state.hasScanned = true;
       toast("Demo workspace reset to a clean checkout", "success");
@@ -279,6 +291,11 @@ async function handleAction(event) {
       state.scanning = false;
       render();
       toast("Community preview ready — maintainer review required", "success");
+    } else if (action === "hint") {
+      const missionId = button.dataset.missionId;
+      state.hints[missionId] = (state.hints[missionId] || 0) + 1;
+      render();
+      toast("Hint unlocked — keep reasoning, don't skip the journey", "success");
     } else if (action === "seed") {
       state.lastResult = null;
       await api("/api/seed-bug", { method: "POST", body: "{}" });
