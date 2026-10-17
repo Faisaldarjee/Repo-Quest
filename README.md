@@ -76,6 +76,8 @@ npx repoquest play
 
 `play` copies the repository into a disposable workspace, starts the local experience on port `4000`, watches file changes, and runs the quest's safe verification commands while you keep using your normal editor.
 
+If port `4000` is already in use, set `PORT` before `play` (`set PORT=4001` on Windows or `PORT=4001 npx repoquest play` on Linux/macOS).
+
 ## Public repository preview
 
 The web experience also accepts a clean public GitHub URL. It performs a shallow clone, scans the source without executing it, and builds a community preview. Preview missions are explicitly marked as **not reviewed by the repository maintainer**. Only use this mode for repositories you are allowed to inspect.

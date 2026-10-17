@@ -62,10 +62,12 @@ export async function main(argv: readonly string[] = process.argv.slice(2)): Pro
   }
 
   if (command === "play") {
+    const playPort = process.env.PORT === undefined ? 4000 : Number.parseInt(process.env.PORT, 10);
+    if (!Number.isInteger(playPort) || playPort < 0 || playPort > 65_535) throw new TypeError("PORT must be an integer between 0 and 65535");
     const application = await startRepoQuestServer({
       repositoryRoot: target,
       questManifestPath: questPath(target),
-      port: 4000,
+      port: playPort,
     });
     console.log(`Play mode ready for ${target}`);
     console.log(`Open http://localhost:${application.port} and edit the repository in your normal editor.`);
