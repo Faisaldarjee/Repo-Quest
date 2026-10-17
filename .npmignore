@@ -1,0 +1,6 @@
+.git/
+.opencode/
+.repoquest/
+coverage/
+*.log
+*.tgz

@@ -1,7 +1,9 @@
 {
   "name": "repoquest",
   "version": "0.1.0",
-  "private": true,
+  "bin": {
+    "repoquest": "bin/repoquest.mjs"
+  },
   "description": "AI-generated, sandbox-verified learning quests for open-source codebases.",
   "type": "module",
   "engines": {
@@ -16,11 +18,11 @@
     "build": "npm run typecheck"
   },
   "dependencies": {
+    "tsx": "^4.19.3",
     "yaml": "^2.7.0"
   },
   "devDependencies": {
     "@types/node": "^22.13.4",
-    "tsx": "^4.19.3",
     "typescript": "^5.7.3"
   }
 }

@@ -41,7 +41,7 @@ npm run typecheck
 npm run dev
 ```
 
-Open <http://localhost:3000>.
+Open <http://localhost:4000>.
 
 The single offline test command is:
 
@@ -58,18 +58,31 @@ npm run repoquest -- scan fixtures/quest-shop
 npm run repoquest -- generate fixtures/quest-shop
 npm run repoquest -- validate quests/quest-shop.yml
 npm run repoquest -- init ./my-repository
+npm run repoquest -- play ./my-repository
 ```
 
 The CLI uses argv-based commands and never interprets mission commands through a shell.
+
+After publishing, the intended maintainer/contributor workflow is:
+
+```bash
+npx repoquest init
+npx repoquest generate
+npx repoquest review
+npx repoquest export
+npx repoquest play
+```
+
+`play` copies the repository into a disposable workspace, starts the local experience on port `4000`, watches file changes, and runs the quest's safe verification commands while you keep using your normal editor.
 
 ## Docker
 
 ```bash
 docker build -t repoquest .
-docker run --rm -p 3000:3000 repoquest
+docker run --rm -p 4000:4000 repoquest
 ```
 
-Then open <http://localhost:3000>.
+Then open <http://localhost:4000>.
 
 ## Quest format
 

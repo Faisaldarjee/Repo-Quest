@@ -12,8 +12,8 @@ export async function resetDemoWorkspace(): Promise<string> {
   return DEMO_WORKSPACE_ROOT;
 }
 
-export async function seedInvalidLoginBug(): Promise<void> {
-  const path = join(DEMO_WORKSPACE_ROOT, AUTH_FILE);
+export async function seedInvalidLoginBug(workspaceRoot = DEMO_WORKSPACE_ROOT): Promise<void> {
+  const path = join(workspaceRoot, AUTH_FILE);
   const source = await readFile(path, "utf8");
   const correct = "if (!user || user.password !== password)";
   const broken = "if (user && user.password !== password)";
@@ -23,8 +23,8 @@ export async function seedInvalidLoginBug(): Promise<void> {
   await writeFile(path, source.replace(correct, broken), "utf8");
 }
 
-export async function applyInvalidLoginFix(): Promise<void> {
-  const path = join(DEMO_WORKSPACE_ROOT, AUTH_FILE);
+export async function applyInvalidLoginFix(workspaceRoot = DEMO_WORKSPACE_ROOT): Promise<void> {
+  const path = join(workspaceRoot, AUTH_FILE);
   const source = await readFile(path, "utf8");
   await writeFile(path, source.replace("if (user && user.password !== password)", "if (!user || user.password !== password)"), "utf8");
 }

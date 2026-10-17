@@ -1,45 +1,56 @@
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { readFile } from "node:fs/promises";
 import { extname, join, normalize, resolve, sep } from "node:path";
-import {
-  readQuestManifest,
-  planLocalMissions,
-  runSafeCommand,
-  scanRepository,
-  type CommandResult,
-  type QuestManifest,
-} from "./core/index.ts";
+import { fileURLToPath } from "node:url";
+import { planLocalMissions } from "./core/index.ts";
 import {
   applyInvalidLoginFix,
-  DEMO_WORKSPACE_ROOT,
-  resetDemoWorkspace,
+  DEMO_FIXTURE_ROOT,
   seedInvalidLoginBug,
 } from "./demo/demo-repository.ts";
+import { createPlaySession, type PlaySession, type PlayState } from "./play/index.ts";
 
-const PORT = Number.parseInt(process.env.PORT ?? "3000", 10);
 const ROOT = process.cwd();
 const PUBLIC_ROOT = join(ROOT, "public");
-const QUEST_PATH = join(ROOT, "quests", "quest-shop.yml");
-const workspaceReady = resetDemoWorkspace();
+const DEFAULT_QUEST_PATH = join(ROOT, "quests", "quest-shop.yml");
 
-interface DemoState {
-  readonly passed: Set<string>;
-  seededBug: boolean;
-  readonly activity: string[];
+export interface RepoQuestServerOptions {
+  readonly port?: number;
+  readonly repositoryRoot?: string;
+  readonly questManifestPath?: string;
 }
 
-const demoState: DemoState = {
-  passed: new Set(),
-  seededBug: false,
-  activity: ["RepoQuest demo workspace prepared"],
-};
+export interface RunningRepoQuestServer {
+  readonly server: Server;
+  readonly session: PlaySession;
+  readonly port: number;
+  close(): Promise<void>;
+}
+
+interface DemoCompatibilityState {
+  seededBug: boolean;
+}
 
 const MIME_TYPES: Record<string, string> = {
   ".css": "text/css; charset=utf-8",
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
   ".svg": "image/svg+xml",
 };
+
+function configuredPort(value = process.env.PORT): number {
+  if (value === undefined || value.trim() === "") return 4000;
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isInteger(parsed) || parsed < 0 || parsed > 65_535) {
+    throw new TypeError("PORT must be an integer between 0 and 65535");
+  }
+  return parsed;
+}
+
+function configuredPath(value: string | undefined, fallback: string): string {
+  return resolve(value && value.trim().length > 0 ? value : fallback);
+}
 
 function sendJson(response: ServerResponse, status: number, payload: unknown): void {
   const body = JSON.stringify(payload);
@@ -63,32 +74,13 @@ async function readJsonBody(request: IncomingMessage): Promise<Record<string, un
   }
   if (!body.trim()) return {};
   const parsed: unknown = JSON.parse(body);
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) throw new Error("Request body must be an object");
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    throw new Error("Request body must be an object");
+  }
   return parsed as Record<string, unknown>;
 }
 
-function addActivity(message: string): void {
-  demoState.activity.unshift(message);
-  demoState.activity.splice(8);
-}
-
-function commandFor(missionId: string): { executable: string; args: string[] } | undefined {
-  if (missionId === "boot-the-shop") return { executable: "node", args: ["tests/run-tests.js"] };
-  if (missionId === "trace-login-flow") return { executable: "node", args: ["scripts/trace-login.js"] };
-  if (missionId === "fix-invalid-login") return { executable: "node", args: ["tests/invalid-login.js"] };
-  return undefined;
-}
-
-async function verifyMission(missionId: string): Promise<CommandResult | undefined> {
-  const command = commandFor(missionId);
-  if (command === undefined) return undefined;
-  return runSafeCommand(
-    { executable: command.executable, args: command.args, cwd: ".", timeoutMs: 5_000 },
-    { repoRoot: DEMO_WORKSPACE_ROOT, defaultTimeoutMs: 5_000 },
-  );
-}
-
-function extractTraceEvents(result: CommandResult): string[] {
+function extractTraceEvents(result: { readonly stdout: string }): string[] {
   return result.stdout
     .split("\n")
     .map((line) => {
@@ -102,108 +94,26 @@ function extractTraceEvents(result: CommandResult): string[] {
     .filter((event): event is string => event !== undefined);
 }
 
-function missionViews(manifest: QuestManifest) {
-  const order = manifest.missions.map((mission) => mission.id);
-  return manifest.missions.map((mission, index) => {
-    const previous = index === 0 || demoState.passed.has(order[index - 1] ?? "");
-    const status = demoState.passed.has(mission.id) ? "completed" : previous ? "available" : "locked";
-    return { ...mission, status, seeded: mission.id === "fix-invalid-login" && demoState.seededBug };
-  });
-}
-
-async function statePayload() {
-  await workspaceReady;
-  const [manifest, scan] = await Promise.all([readQuestManifest(QUEST_PATH), scanRepository(DEMO_WORKSPACE_ROOT)]);
-  const planner = planLocalMissions(scan);
+function stateWithCompatibility(state: PlayState, demoState: DemoCompatibilityState): PlayState & {
+  readonly product: { readonly name: string; readonly brand: string; readonly tagline: string };
+  readonly planner: { readonly mode: string; readonly candidates: number };
+  readonly seededBug: boolean;
+} {
+  const planner = planLocalMissions(state.project.scan);
   return {
+    ...state,
     product: {
       name: "RepoQuest",
       brand: "Faisal Labs",
       tagline: "Duolingo for codebases.",
     },
-    manifest: { id: manifest.id, title: manifest.title, description: manifest.description },
-    scan: {
-      files: scan.files.length,
-      tests: scan.tests.length,
-      routes: scan.likelyRoutes.length,
-      symbols: scan.exportedSymbols.length,
-      packageScripts: scan.packageScripts,
-    },
     planner: { mode: planner.mode, candidates: planner.candidates.length },
-    missions: missionViews(manifest),
-    progress: { completed: demoState.passed.size, total: manifest.missions.length },
-    activity: demoState.activity,
     seededBug: demoState.seededBug,
   };
 }
 
-async function handleApi(request: IncomingMessage, response: ServerResponse, url: URL): Promise<void> {
-  if (request.method === "GET" && url.pathname === "/api/state") {
-    sendJson(response, 200, await statePayload());
-    return;
-  }
-
-  if (request.method === "POST" && url.pathname === "/api/reset") {
-    await resetDemoWorkspace();
-    demoState.passed.clear();
-    demoState.seededBug = false;
-    demoState.activity.splice(0, demoState.activity.length, "Demo workspace reset to a clean checkout");
-    sendJson(response, 200, await statePayload());
-    return;
-  }
-
-  if (request.method === "POST" && url.pathname === "/api/seed-bug") {
-    await workspaceReady;
-    await seedInvalidLoginBug();
-    demoState.seededBug = true;
-    addActivity("Mutation seeded: invalid users now exercise the broken branch");
-    sendJson(response, 200, await statePayload());
-    return;
-  }
-
-  if (request.method === "POST" && url.pathname === "/api/apply-fix") {
-    await workspaceReady;
-    await applyInvalidLoginFix();
-    addActivity("Guided patch applied in the disposable learner workspace");
-    sendJson(response, 200, await statePayload());
-    return;
-  }
-
-  if (request.method === "POST" && url.pathname === "/api/verify") {
-    const body = await readJsonBody(request);
-    const missionId = typeof body.missionId === "string" ? body.missionId : "";
-    if (!missionId) {
-      sendJson(response, 400, { error: "missionId is required" });
-      return;
-    }
-    if (missionId === "fix-invalid-login" && !demoState.seededBug) {
-      sendJson(response, 400, { error: "Seed the mutation before verifying this mission" });
-      return;
-    }
-    const result = await verifyMission(missionId);
-    if (result === undefined) {
-      sendJson(response, 400, { error: "This mission is presentation-only in the MVP" });
-      return;
-    }
-    const traceEvents = missionId === "trace-login-flow" ? extractTraceEvents(result) : [];
-    const passed = result.status === "passed" && (missionId !== "trace-login-flow" || traceEvents.includes("auth-service.login"));
-    if (passed) {
-      demoState.passed.add(missionId);
-      addActivity(`${missionId} verified with a real command run`);
-    } else {
-      addActivity(`${missionId} failed; learner received the captured output`);
-    }
-    sendJson(response, 200, {
-      passed,
-      missionId,
-      result,
-      traceEvents,
-      state: await statePayload(),
-    });
-    return;
-  }
-
-  sendJson(response, 404, { error: "API route not found" });
+function isDefaultDemoRepository(repositoryRoot: string): boolean {
+  return resolve(repositoryRoot) === resolve(DEMO_FIXTURE_ROOT);
 }
 
 async function serveStatic(response: ServerResponse, pathname: string): Promise<void> {
@@ -222,20 +132,153 @@ async function serveStatic(response: ServerResponse, pathname: string): Promise<
   }
 }
 
-const server = createServer(async (request, response) => {
-  try {
-    const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
-    if (url.pathname.startsWith("/api/")) {
-      await handleApi(request, response, url);
+/** Create the generic local RepoQuest HTTP server without binding a port. */
+export async function createRepoQuestServer(options: RepoQuestServerOptions = {}): Promise<RunningRepoQuestServer> {
+  const repositoryRoot = configuredPath(options.repositoryRoot ?? process.env.REPOQUEST_REPO_ROOT, DEMO_FIXTURE_ROOT);
+  const questManifestPath = configuredPath(options.questManifestPath ?? process.env.REPOQUEST_QUEST_PATH, DEFAULT_QUEST_PATH);
+  const session = await createPlaySession({ repositoryRoot, questManifestPath });
+  const demoState: DemoCompatibilityState = { seededBug: false };
+  const defaultDemo = isDefaultDemoRepository(repositoryRoot) && resolve(questManifestPath) === resolve(DEFAULT_QUEST_PATH);
+
+  const handleApi = async (request: IncomingMessage, response: ServerResponse, url: URL): Promise<void> => {
+    if (request.method === "GET" && url.pathname === "/api/project") {
+      sendJson(response, 200, await session.getProject());
       return;
     }
-    await serveStatic(response, url.pathname);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unexpected server error";
-    sendJson(response, 500, { error: message });
-  }
-});
 
-server.listen(PORT, "0.0.0.0", () => {
-  console.log(`RepoQuest running at http://localhost:${PORT}`);
-});
+    if (request.method === "GET" && url.pathname === "/api/quest") {
+      sendJson(response, 200, { ...session.getQuest(), path: session.questManifestPath });
+      return;
+    }
+
+    if (request.method === "GET" && url.pathname === "/api/state") {
+      sendJson(response, 200, stateWithCompatibility(await session.getState(), demoState));
+      return;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/reset") {
+      await session.reset();
+      demoState.seededBug = false;
+      sendJson(response, 200, stateWithCompatibility(await session.getState(), demoState));
+      return;
+    }
+
+    // These two routes are retained for the included fixture UI. They operate on
+    // the session copy, never on the configured repository itself.
+    if (request.method === "POST" && url.pathname === "/api/seed-bug") {
+      if (!defaultDemo) {
+        sendJson(response, 404, { error: "The demo mutation is only available for the included fixture" });
+        return;
+      }
+      await seedInvalidLoginBug(session.workspaceRoot);
+      demoState.seededBug = true;
+      sendJson(response, 200, stateWithCompatibility(await session.getState(), demoState));
+      return;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/apply-fix") {
+      if (!defaultDemo) {
+        sendJson(response, 404, { error: "The demo mutation is only available for the included fixture" });
+        return;
+      }
+      await applyInvalidLoginFix(session.workspaceRoot);
+      sendJson(response, 200, stateWithCompatibility(await session.getState(), demoState));
+      return;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/verify") {
+      let body: Record<string, unknown>;
+      try {
+        body = await readJsonBody(request);
+      } catch (error) {
+        sendJson(response, 400, { error: error instanceof Error ? error.message : "Invalid JSON body" });
+        return;
+      }
+      const missionId = typeof body.missionId === "string" ? body.missionId.trim() : "";
+      if (!missionId) {
+        sendJson(response, 400, { error: "missionId is required" });
+        return;
+      }
+      // Keep the original fixture's mutation flow intact without making these
+      // assumptions part of the generic play engine.
+      if (defaultDemo && missionId === "fix-invalid-login" && !demoState.seededBug) {
+        sendJson(response, 400, { error: "Seed the mutation before verifying this mission" });
+        return;
+      }
+      try {
+        const verification = await session.verifyMission(missionId);
+        const traceEvents = extractTraceEvents(verification.result);
+        sendJson(response, 200, {
+          ...verification,
+          traceEvents,
+          state: stateWithCompatibility(await session.getState(), demoState),
+        });
+      } catch (error) {
+        sendJson(response, 400, { error: error instanceof Error ? error.message : "Mission verification failed" });
+      }
+      return;
+    }
+
+    sendJson(response, 404, { error: "API route not found" });
+  };
+
+  const server = createServer(async (request, response) => {
+    try {
+      const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
+      if (url.pathname.startsWith("/api/")) {
+        await handleApi(request, response, url);
+        return;
+      }
+      await serveStatic(response, url.pathname);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unexpected server error";
+      sendJson(response, 500, { error: message });
+    }
+  });
+
+  const close = async (): Promise<void> => {
+    await new Promise<void>((resolveClose, reject) => {
+      if (!server.listening) {
+        resolveClose();
+        return;
+      }
+      server.close((error) => (error === undefined ? resolveClose() : reject(error)));
+    });
+    await session.dispose();
+  };
+
+  return { server, session, port: options.port ?? configuredPort(), close };
+}
+
+/** Create and bind the local server. Port 4000 is the default; PORT and options may override it. */
+export async function startRepoQuestServer(options: RepoQuestServerOptions = {}): Promise<RunningRepoQuestServer> {
+  const application = await createRepoQuestServer(options);
+  const port = options.port ?? configuredPort();
+  await new Promise<void>((resolveListen, reject) => {
+    application.server.once("error", reject);
+    application.server.listen(port, "0.0.0.0", resolveListen);
+  });
+  const address = application.server.address();
+  const boundPort = typeof address === "object" && address !== null ? address.port : port;
+  console.log(`RepoQuest running at http://localhost:${boundPort}`);
+  return { ...application, port: boundPort };
+}
+
+const isMainModule = process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (isMainModule) {
+  startRepoQuestServer()
+    .then((application) => {
+      let stopping = false;
+      const shutdown = async (): Promise<void> => {
+        if (stopping) return;
+        stopping = true;
+        await application.close();
+      };
+      process.once("SIGINT", () => void shutdown());
+      process.once("SIGTERM", () => void shutdown());
+    })
+    .catch((error: unknown) => {
+      console.error(error instanceof Error ? error.message : error);
+      process.exitCode = 1;
+    });
+}

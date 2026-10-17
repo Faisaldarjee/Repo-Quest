@@ -96,7 +96,7 @@ function renderLanding() {
   } else {
     scanState.textContent = "READY";
     readout.innerHTML = '<span class="readout-dot"></span><span>Awaiting repository map</span>';
-    note.textContent = "Fixture ready · deterministic local run";
+    note.textContent = "Repository ready · deterministic local run";
     if (label) label.textContent = "Scan demo repository";
   }
 }
@@ -128,7 +128,7 @@ function renderRepoGraph(data) {
       <span class="graph-beam beam-one"></span><span class="graph-beam beam-two"></span><span class="graph-beam beam-three"></span>
       <span class="graph-particle particle-one"></span><span class="graph-particle particle-two"></span>
     </div>
-    <div class="graph-root"><span class="root-mark">⌁</span><strong>${escapeHtml(data.manifest.id || "repository")}</strong><small>scanned fixture</small></div>
+     <div class="graph-root"><span class="root-mark">⌁</span><strong>${escapeHtml(data.project?.name || data.manifest.id || "repository")}</strong><small>${escapeHtml(data.watcher?.mode || "local")} · disposable workspace</small></div>
     <div class="graph-nodes">${nodes.map(([label, value, detail]) => `<div class="graph-node"><span class="node-label">${label}</span><strong>${number(value)}</strong><small>${detail}</small></div>`).join("")}</div>`;
 }
 
@@ -214,6 +214,7 @@ function render() {
   workspace.toggleAttribute("inert", !state.hasScanned);
   $("#workspace-title").textContent = state.data.manifest.title || "Repository onboarding";
   $("#manifest-description").textContent = state.data.manifest.description || "A living map of the repository, with each step unlocked by the one before it.";
+  $("#workspace-mode-text").innerHTML = `workspace / <b>${escapeHtml(state.data.watcher?.mode || "local")}</b>`;
   renderStats(state.data);
   renderRepoGraph(state.data);
   renderMissions(state.data);
