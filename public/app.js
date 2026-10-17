@@ -5,6 +5,7 @@ const state = {
   hasScanned: false,
   busy: false,
   scanning: false,
+  preview: false,
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -79,19 +80,21 @@ function renderLanding() {
   const label = button?.querySelector(".button-label");
   const verifierCount = state.data?.missions?.filter((mission) => Boolean(mission.validation)).length;
   $("#scan-repo-label").textContent = state.data?.manifest?.id ? `SCAN / ${state.data.manifest.id}` : "SCAN / LOCAL FIXTURE";
-  $("#hero-proof").textContent = verifierCount === undefined
+  $("#hero-proof").textContent = state.preview
+    ? "Public preview. Generated locally. Not maintainer-reviewed."
+    : verifierCount === undefined
     ? "One repository. Real verifiers. A path you can see."
     : `One repository. ${number(verifierCount)} real verifiers. A path you can see.`;
 
   if (state.scanning) {
     scanState.textContent = "MAPPING";
     readout.innerHTML = '<span class="readout-dot active"></span><span>Reading repository state…</span>';
-    note.textContent = "Reading the local fixture · hold tight";
+    note.textContent = "Reading the repository · hold tight";
     if (label) label.textContent = "Mapping repository";
   } else if (state.hasScanned && state.data) {
     scanState.textContent = "MAPPED";
     readout.innerHTML = `<span class="readout-dot"></span><span>${number(state.data.scan.files)} files mapped · path ready</span>`;
-    note.textContent = "Map complete · choose a mission below";
+    note.textContent = state.preview ? "Community preview mapped · maintainer review required" : "Map complete · choose a mission below";
     if (label) label.textContent = "Re-scan repository";
   } else {
     scanState.textContent = "READY";
@@ -247,6 +250,7 @@ async function handleAction(event) {
     if (action === "reset") {
       state.selected = "boot-the-shop";
       state.lastResult = null;
+      state.preview = false;
       await api("/api/reset", { method: "POST", body: "{}" });
       state.hasScanned = true;
       toast("Demo workspace reset to a clean checkout", "success");
@@ -261,6 +265,20 @@ async function handleAction(event) {
       state.scanning = false;
       render();
       toast("Repository mapped — choose your first quest", "success");
+    } else if (action === "preview") {
+      const url = $("#github-url").value.trim();
+      if (!url) throw new Error("Paste a public GitHub repository URL first");
+      state.scanning = true;
+      render();
+      toast("Cloning a shallow preview and mapping the repository…");
+      const preview = await api("/api/preview", { method: "POST", body: JSON.stringify({ url }) });
+      state.data = preview.state;
+      state.hasScanned = true;
+      state.preview = true;
+      state.lastResult = null;
+      state.scanning = false;
+      render();
+      toast("Community preview ready — maintainer review required", "success");
     } else if (action === "seed") {
       state.lastResult = null;
       await api("/api/seed-bug", { method: "POST", body: "{}" });

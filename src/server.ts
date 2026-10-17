@@ -9,6 +9,7 @@ import {
   seedInvalidLoginBug,
 } from "./demo/demo-repository.ts";
 import { createPlaySession, type PlaySession, type PlayState } from "./play/index.ts";
+import { createGitHubPreview } from "./preview/github-preview.ts";
 
 const ROOT = process.cwd();
 const PUBLIC_ROOT = join(ROOT, "public");
@@ -136,9 +137,10 @@ async function serveStatic(response: ServerResponse, pathname: string): Promise<
 export async function createRepoQuestServer(options: RepoQuestServerOptions = {}): Promise<RunningRepoQuestServer> {
   const repositoryRoot = configuredPath(options.repositoryRoot ?? process.env.REPOQUEST_REPO_ROOT, DEMO_FIXTURE_ROOT);
   const questManifestPath = configuredPath(options.questManifestPath ?? process.env.REPOQUEST_QUEST_PATH, DEFAULT_QUEST_PATH);
-  const session = await createPlaySession({ repositoryRoot, questManifestPath });
+  let session = await createPlaySession({ repositoryRoot, questManifestPath });
   const demoState: DemoCompatibilityState = { seededBug: false };
-  const defaultDemo = isDefaultDemoRepository(repositoryRoot) && resolve(questManifestPath) === resolve(DEFAULT_QUEST_PATH);
+  let defaultDemo = isDefaultDemoRepository(repositoryRoot) && resolve(questManifestPath) === resolve(DEFAULT_QUEST_PATH);
+  let previewCleanup: (() => Promise<void>) | undefined;
 
   const handleApi = async (request: IncomingMessage, response: ServerResponse, url: URL): Promise<void> => {
     if (request.method === "GET" && url.pathname === "/api/project") {
@@ -148,6 +150,44 @@ export async function createRepoQuestServer(options: RepoQuestServerOptions = {}
 
     if (request.method === "GET" && url.pathname === "/api/quest") {
       sendJson(response, 200, { ...session.getQuest(), path: session.questManifestPath });
+      return;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/preview") {
+      let body: Record<string, unknown>;
+      try {
+        body = await readJsonBody(request);
+      } catch (error) {
+        sendJson(response, 400, { error: error instanceof Error ? error.message : "Invalid JSON body" });
+        return;
+      }
+      const githubUrl = typeof body.url === "string" ? body.url : "";
+      let preview: Awaited<ReturnType<typeof createGitHubPreview>> | undefined;
+      try {
+        preview = await createGitHubPreview(githubUrl);
+        const nextSession = await createPlaySession({ repositoryRoot: preview.root, questManifestPath: preview.manifestPath });
+        const previousSession = session;
+        const previousCleanup = previewCleanup;
+        session = nextSession;
+        previewCleanup = preview.cleanup;
+        defaultDemo = false;
+        demoState.seededBug = false;
+        await previousSession.dispose();
+        if (previousCleanup !== undefined) await previousCleanup();
+        sendJson(response, 200, {
+          preview: {
+            url: preview.ref.url,
+            owner: preview.ref.owner,
+            name: preview.ref.name,
+            reviewedByMaintainer: false,
+            candidates: preview.planner.candidates.length,
+          },
+          state: stateWithCompatibility(await session.getState(), demoState),
+        });
+      } catch (error) {
+        if (preview !== undefined) await preview.cleanup();
+        sendJson(response, 400, { error: error instanceof Error ? error.message : "GitHub preview failed" });
+      }
       return;
     }
 
@@ -245,6 +285,7 @@ export async function createRepoQuestServer(options: RepoQuestServerOptions = {}
       server.close((error) => (error === undefined ? resolveClose() : reject(error)));
     });
     await session.dispose();
+    if (previewCleanup !== undefined) await previewCleanup();
   };
 
   return { server, session, port: options.port ?? configuredPort(), close };

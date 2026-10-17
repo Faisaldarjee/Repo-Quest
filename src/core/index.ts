@@ -5,3 +5,4 @@ export * from "./repository-scanner.ts";
 export * from "./command-runner.ts";
 export * from "./quest-io.ts";
 export * from "./mission-planner.ts";
+export * from "../preview/github-preview.ts";

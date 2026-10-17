@@ -16,7 +16,7 @@ export interface CommandRunnerOptions {
   readonly env?: Readonly<Record<string, string>>;
 }
 
-const DEFAULT_ALLOWED_EXECUTABLES = new Set(["node", "npm", "npx", "pnpm", "yarn", "python", "pytest"]);
+const DEFAULT_ALLOWED_EXECUTABLES = new Set(["node", "npm", "npx", "pnpm", "yarn", "python", "pytest", "git"]);
 function redact(value: string): string {
   return value
     .replace(/(api[_-]?key|token|secret|password)\s*[=:]\s*[^\s\n]+/gi, (_match, key: string) => `${key}=[REDACTED]`)

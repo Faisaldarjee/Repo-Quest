@@ -75,6 +75,12 @@ npx repoquest play
 
 `play` copies the repository into a disposable workspace, starts the local experience on port `4000`, watches file changes, and runs the quest's safe verification commands while you keep using your normal editor.
 
+## Public repository preview
+
+The web experience also accepts a clean public GitHub URL. It performs a shallow clone, scans the source without executing it, and builds a community preview. Preview missions are explicitly marked as **not reviewed by the repository maintainer**. Only use this mode for repositories you are allowed to inspect.
+
+The preview limits the clone to 5,000 files and 25 MB of source data, accepts only `https://github.com/owner/repository` URLs, and keeps the clone in a temporary workspace.
+
 ## Docker
 
 ```bash
