@@ -3,73 +3,133 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#0d0e13" />
-    <title>RepoQuest — Duolingo for codebases</title>
+    <meta name="theme-color" content="#080a0f" />
+    <meta name="description" content="RepoQuest turns a repository into a verified learning path." />
+    <title>RepoQuest — a verified path through any codebase</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <div class="noise"></div>
+    <div class="noise" aria-hidden="true"></div>
+    <div class="ambient ambient-one" aria-hidden="true"></div>
+    <div class="ambient ambient-two" aria-hidden="true"></div>
+
     <main class="shell">
       <header class="topbar">
-        <a class="brand" href="/">
-          <span class="brand-mark">RQ</span>
-          <span><strong>RepoQuest</strong><small>by Faisal Labs</small></span>
+        <a class="brand" href="/" aria-label="RepoQuest home">
+          <span class="brand-mark" aria-hidden="true"><span>R</span><i>Q</i></span>
+          <span class="brand-lockup"><strong>RepoQuest</strong><small>Faisal Labs / local edition</small></span>
         </a>
         <div class="top-actions">
-          <span class="status-dot"><i></i> local sandbox</span>
-          <button class="ghost-button" data-action="reset">Reset demo</button>
+          <span class="environment-pill"><i></i> local sandbox</span>
+          <button class="ghost-button" data-action="reset" type="button">Reset demo <span>↺</span></button>
         </div>
       </header>
 
-      <section class="hero">
-        <div class="eyebrow">OPEN-SOURCE ONBOARDING, REIMAGINED</div>
-        <h1>Duolingo<br /><em>for codebases.</em></h1>
-        <p class="hero-copy">Turn a repository into a verified learning journey. AI proposes the quests. A disposable workspace proves they work.</p>
-        <div class="hero-actions">
-          <button class="primary-button" data-action="scan">Scan demo repository <span>→</span></button>
-          <span class="proof"><b>5</b> missions · <b>3</b> real verifiers</span>
-        </div>
-      </section>
+      <div class="experience" id="experience" data-mode="landing">
+        <section class="landing" id="landing-state" aria-labelledby="landing-title">
+          <div class="landing-grid">
+            <div class="landing-copy">
+              <div class="eyebrow"><span class="eyebrow-rule"></span> repository learning system / 01</div>
+              <h1 id="landing-title">The shortest path<br />through a <em>codebase.</em></h1>
+              <p class="hero-copy">RepoQuest turns unfamiliar software into a sequence of small, observable moves — then lets the real repository prove each one.</p>
+              <div class="hero-actions">
+                <button class="primary-button scan-button" data-action="scan" type="button">
+                  <span class="button-icon">⌁</span><span class="button-label">Scan demo repository</span><b>→</b>
+                </button>
+                <span class="scan-note" id="scan-note">Fixture ready · deterministic local run</span>
+              </div>
+              <div class="hero-footnote"><span class="pulse-mark"></span><span id="hero-proof">One repository. Real verifiers. A path you can see.</span></div>
+            </div>
 
-      <section class="stats-grid" id="stats"></section>
-
-      <section class="workspace-grid">
-        <div class="panel map-panel">
-          <div class="panel-header">
-            <div><span class="panel-kicker">LEARNER VIEW</span><h2>Quest map</h2></div>
-            <span class="progress-label" id="progress-label">0 / 5 complete</span>
+            <div class="scan-card" aria-label="Repository scan status">
+              <div class="scan-card-top"><span class="panel-kicker" id="scan-repo-label">SCAN / LOCAL FIXTURE</span><span class="scan-state" id="scan-state">READY</span></div>
+              <div class="scan-orbit" aria-hidden="true">
+                <span class="orbit-ring ring-a"></span><span class="orbit-ring ring-b"></span>
+                <span class="orbit-line line-a"></span><span class="orbit-line line-b"></span>
+                <span class="orbit-node node-main">RQ</span><span class="orbit-node node-files">files</span><span class="orbit-node node-tests">tests</span><span class="orbit-node node-route">route</span>
+              </div>
+              <div class="scan-readout" id="scan-readout"><span class="readout-dot"></span><span>Awaiting repository map</span></div>
+              <div class="scan-card-footer"><span>source / local fixture</span><span>mode / sandbox</span></div>
+            </div>
           </div>
-          <div class="quest-map" id="missions"></div>
-        </div>
 
-        <div class="panel mission-panel">
-          <div class="panel-header">
-            <div><span class="panel-kicker">ACTIVE MISSION</span><h2 id="mission-title">Boot the Shop</h2></div>
-            <span class="difficulty" id="mission-status">AVAILABLE</span>
+          <div class="story-rail" aria-label="RepoQuest journey">
+            <div class="story-intro"><span class="section-index">01</span><span>from maintainer intent<br />to learner confidence</span></div>
+            <div class="story-card maintainer-story"><span class="story-icon">↗</span><span><small>MAINTAINER</small><strong>Map the shape.<br />Ship a quest.</strong></span></div>
+            <span class="story-arrow" aria-hidden="true">→</span>
+            <div class="story-card learner-story"><span class="story-icon">◎</span><span><small>LEARNER</small><strong>Follow the path.<br />Make a change.</strong></span></div>
+            <span class="story-arrow" aria-hidden="true">→</span>
+            <div class="story-card verifier-story"><span class="story-icon">✓</span><span><small>VERIFIER</small><strong>Run the command.<br />Trust the result.</strong></span></div>
           </div>
-          <p class="mission-objective" id="mission-objective">Choose a mission from the map to begin your first verified contribution.</p>
-          <div class="mission-meta" id="mission-meta"></div>
-          <div class="terminal" id="terminal"><div class="terminal-top"><span></span><span></span><span></span><label>repoquest / verifier</label></div><pre id="terminal-output">Waiting for a mission run…</pre></div>
-          <div class="mission-actions" id="mission-actions"></div>
-        </div>
-      </section>
+        </section>
 
-      <section class="bottom-grid">
-        <div class="panel activity-panel">
-          <div class="panel-header"><div><span class="panel-kicker">PROOF OF WORK</span><h2>Agent activity</h2></div><span class="live-label"><i></i> live</span></div>
-          <div class="activity-list" id="activity"></div>
-        </div>
-        <div class="panel principle-panel">
-          <span class="panel-kicker">THE REPOQUEST RULE</span>
-          <blockquote>“A mission is not publishable until the sandbox can solve it.”</blockquote>
-          <div class="principle-line"><span class="check">✓</span><span>AI-generated candidates are inspected before they reach learners.</span></div>
-          <div class="principle-line"><span class="check">✓</span><span>Every attempt runs in a disposable workspace.</span></div>
-        </div>
-      </section>
+        <section class="workspace" id="workspace" aria-labelledby="workspace-title" aria-hidden="true" inert>
+          <div class="workspace-heading">
+            <div>
+              <div class="eyebrow"><span class="eyebrow-rule"></span> live repository map</div>
+              <h2 id="workspace-title">Your first contribution starts here.</h2>
+            </div>
+            <div class="workspace-mode"><span class="mode-dot"></span><span>workspace / <b>disposable</b></span></div>
+          </div>
 
-      <footer><span>RepoQuest is open source.</span><span>Build a quest. Teach a codebase.</span></footer>
+          <div class="telemetry-grid" id="stats"></div>
+
+          <div class="workspace-grid">
+            <section class="panel graph-panel" aria-labelledby="map-title">
+              <div class="panel-header">
+                <div><span class="panel-kicker">REPOSITORY GRAPH / MISSION PATH</span><h3 id="map-title">Quest Shop Onboarding</h3></div>
+                <span class="progress-label" id="progress-label">0 / 0 complete</span>
+              </div>
+              <p class="panel-description" id="manifest-description">A living map of the repository, with each step unlocked by the one before it.</p>
+              <div class="repo-graph" id="repo-graph" aria-label="Repository scan graph"></div>
+              <div class="path-divider"><span>LEARNING PATH</span><i></i><span id="path-count">00 / 00</span></div>
+              <div class="mission-path" id="missions"></div>
+            </section>
+
+            <section class="panel mission-panel" aria-labelledby="mission-title">
+              <div class="panel-header mission-header">
+                <div><span class="panel-kicker">ACTIVE MISSION / VERIFIER</span><h3 id="mission-title">Select a mission</h3></div>
+                <span class="mission-status" id="mission-status">WAITING</span>
+              </div>
+              <div class="mission-title-row"><span class="mission-step" id="mission-step">STEP 01</span><span class="mission-signal" id="mission-signal">not started</span></div>
+              <p class="mission-objective" id="mission-objective">Scan the repository to reveal the first mission.</p>
+              <div class="mission-meta" id="mission-meta"></div>
+              <div class="verifier-shell">
+                <div class="verifier-header"><span><i class="terminal-dot"></i> live verifier</span><span id="terminal-status">STANDBY</span></div>
+                <div class="terminal" id="terminal">
+                  <div class="terminal-top"><span></span><span></span><span></span><label>repoquest / verifier</label><span class="terminal-cwd">~/demo-workspace</span></div>
+                  <div class="terminal-body"><div class="terminal-prompt">$ <span id="terminal-command">select a mission to inspect its command</span></div><pre id="terminal-output">Waiting for a mission run…</pre></div>
+                </div>
+              </div>
+              <div class="mission-actions" id="mission-actions"></div>
+              <div class="success-panel" id="success-panel" aria-live="polite" hidden>
+                <span class="success-burst" aria-hidden="true">✦</span>
+                <div><span class="panel-kicker">VERIFIED ON THE REAL WORKSPACE</span><strong id="success-title">Mission verified</strong><span id="success-detail">The captured command passed.</span></div>
+                <span class="success-check">✓</span>
+              </div>
+            </section>
+          </div>
+
+          <div class="bottom-grid">
+            <section class="panel activity-panel" aria-labelledby="activity-title">
+              <div class="panel-header"><div><span class="panel-kicker">PROOF OF WORK</span><h3 id="activity-title">Activity stream</h3></div><span class="live-label"><i></i> live</span></div>
+              <div class="activity-list" id="activity"></div>
+            </section>
+            <section class="panel principle-panel" aria-labelledby="principle-title">
+              <span class="panel-kicker">THE REPOQUEST RULE</span>
+              <h3 id="principle-title">Confidence is a command away.</h3>
+              <blockquote>“A mission is not ready for a learner until the sandbox can solve it.”</blockquote>
+              <div class="principle-line"><span class="check">✓</span><span>Every node reflects the state of the actual quest manifest.</span></div>
+              <div class="principle-line"><span class="check">✓</span><span>Every verifier shows the command output it received.</span></div>
+            </section>
+          </div>
+        </section>
+      </div>
+
+      <footer><span>RepoQuest / open-source onboarding</span><span>Build a quest. Teach a codebase.</span></footer>
     </main>
-    <div class="toast" id="toast"></div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <script type="module" src="/app.js"></script>
   </body>
 </html>
