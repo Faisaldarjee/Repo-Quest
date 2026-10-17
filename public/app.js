@@ -7,6 +7,7 @@ const state = {
   scanning: false,
   preview: false,
   hints: {},
+  lastChangeCount: null,
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -239,7 +240,35 @@ function render() {
 
 async function refresh() {
   state.data = await api("/api/state");
+  if (state.lastChangeCount === null) state.lastChangeCount = state.data.fileChanges?.length || 0;
   render();
+}
+
+async function watchEditorChanges() {
+  if (!state.hasScanned || state.busy || !state.data) return;
+  try {
+    const data = await api("/api/state");
+    const changeCount = data.fileChanges?.length || 0;
+    const changed = state.lastChangeCount !== null && changeCount > state.lastChangeCount;
+    state.lastChangeCount = changeCount;
+    state.data = data;
+    if (!changed) return;
+    const mission = selectedMission(data);
+    const canAutoVerify = mission?.status === "available" && Boolean(mission.validation?.verifier) && (mission.id !== "fix-invalid-login" || data.seededBug);
+    render();
+    if (!canAutoVerify) return;
+    state.busy = true;
+    render();
+    const result = await api("/api/verify", { method: "POST", body: JSON.stringify({ missionId: mission.id }) });
+    state.lastResult = result;
+    state.data = result.state;
+    toast(result.passed ? "File change verified — mission unlocked" : "File change detected — verifier found a failing behavior", result.passed ? "success" : "error");
+  } catch {
+    // The normal action flow owns visible errors; background polling stays quiet.
+  } finally {
+    state.busy = false;
+    render();
+  }
 }
 
 async function handleAction(event) {
@@ -263,6 +292,7 @@ async function handleAction(event) {
       state.lastResult = null;
       state.preview = false;
       state.hints = {};
+      state.lastChangeCount = 0;
       await api("/api/reset", { method: "POST", body: "{}" });
       state.hasScanned = true;
       toast("Demo workspace reset to a clean checkout", "success");
@@ -334,4 +364,5 @@ document.addEventListener("DOMContentLoaded", () => {
     render();
     toast(state.lastResult.error, "error");
   });
+  window.setInterval(() => void watchEditorChanges(), 1200);
 });
