@@ -1,4 +1,5 @@
 import type { RepositoryScanResult } from "./repository-scanner.ts";
+import type { MissionValidationPlan } from "./quest-manifest.ts";
 
 export type PlannerMode = "local-rules" | "openai-compatible";
 
@@ -11,6 +12,7 @@ export interface MissionCandidate {
   readonly evidence: "command" | "trace" | "test";
   readonly targetFiles: readonly string[];
   readonly source: "local-rules" | "ai";
+  readonly validation?: MissionValidationPlan;
 }
 
 export interface MissionPlan {
@@ -34,6 +36,7 @@ export function planLocalMissions(scan: RepositoryScanResult): MissionPlan {
   const candidates: MissionCandidate[] = [];
   const testScript = scan.packageScripts.test;
   if (testScript !== undefined) {
+    const npmTest = { executable: "npm", args: ["test"], timeoutMs: 60_000 } as const;
     candidates.push({
       id: "boot-the-project",
       title: "Boot the Project",
@@ -43,6 +46,7 @@ export function planLocalMissions(scan: RepositoryScanResult): MissionPlan {
       evidence: "command",
       targetFiles: ["package.json"],
       source: "local-rules",
+      validation: { baseline: npmTest, solver: npmTest, verifier: npmTest },
     });
   }
 

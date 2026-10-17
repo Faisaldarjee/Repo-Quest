@@ -5,6 +5,8 @@ import {
   evaluateMissionCandidate,
   type MissionValidationStatus,
 } from "./mission-validation.ts";
+import { type MissionValidationPlan } from "./quest-manifest.ts";
+import { validateSafeCommand } from "./result-model.ts";
 import {
   planLocalMissions,
   type MissionCandidate,
@@ -183,6 +185,15 @@ function candidateFromUnknown(value: unknown): CandidateRecord | undefined {
   const portableTargetFiles = targetFiles.filter(
     (file): file is string => typeof file === "string" && isPortablePath(file),
   );
+  let validation: MissionValidationPlan | undefined;
+  if (isRecord(value.validation)) {
+    const parsedValidation: { -readonly [K in keyof MissionValidationPlan]?: MissionValidationPlan[K] } = {};
+    for (const stage of ["baseline", "solver", "verifier"] as const) {
+      const checked = validateSafeCommand(value.validation[stage]);
+      if (checked.valid) parsedValidation[stage] = checked.value;
+    }
+    if (Object.keys(parsedValidation).length > 0) validation = parsedValidation;
+  }
   const status = isMissionValidationStatus(value.status) || value.status === "pending" || value.status === "approved"
     ? value.status
     : undefined;
@@ -196,6 +207,7 @@ function candidateFromUnknown(value: unknown): CandidateRecord | undefined {
     evidence,
     targetFiles: Object.freeze(portableTargetFiles.map((file) => file.replaceAll("\\", "/"))),
     source,
+    ...(validation === undefined ? {} : { validation }),
     ...(status === undefined ? {} : { status }),
     ...(approval === undefined ? {} : { approval }),
     ...(value.approved === true ? { approved: true } : {}),
@@ -446,12 +458,13 @@ export async function exportQuest(repositoryRoot: string): Promise<ExportResult>
 
   const metadata = await readQuestMetadata(root);
   const usedIds = new Set<string>();
-  const missions = eligible.map((candidate) => ({
-    id: uniqueMissionId(candidate.id, usedIds),
-    title: portableText(candidate.title, "Repository mission"),
-    objective: portableText(candidate.objective, "Complete this repository mission."),
-    tags: [candidate.concept, candidate.difficulty, candidate.evidence].map((tag) => portableText(tag, "repoquest")),
-  }));
+    const missions = eligible.map((candidate) => ({
+      id: uniqueMissionId(candidate.id, usedIds),
+      title: portableText(candidate.title, "Repository mission"),
+      objective: portableText(candidate.objective, "Complete this repository mission."),
+      tags: [candidate.concept, candidate.difficulty, candidate.evidence].map((tag) => portableText(tag, "repoquest")),
+      ...(candidate.validation === undefined ? {} : { validation: candidate.validation }),
+    }));
   const manifest = {
     schemaVersion: 1,
     id: metadata.id,
