@@ -7,16 +7,17 @@ import {
   generateCandidatePlan,
   initializeWorkspace,
   reviewCandidates,
+  approveCandidates,
 } from "./core/maintainer-workflow.ts";
 import { questPath } from "./core/maintainer-workflow.ts";
 import { startRepoQuestServer } from "./server.ts";
 
 function help(): void {
-  console.log(`RepoQuest — Duolingo for codebases\n\nCommands:\n  init [path]       Create a .repoquest quest workspace\n  scan [path]       Scan files, scripts, routes, tests, and symbols\n  generate [path]   Generate deterministic mission candidates\n  validate [file]   Validate a quest YAML manifest\n  review [path]     Review local mission evidence\n  export [path]     Export approved missions as quest.yml\n  play [path]       Start a local contributor workspace on port 4000\n`);
+  console.log(`RepoQuest — Duolingo for codebases\n\nCommands:\n  init [path]       Create a .repoquest quest workspace\n  scan [path]       Scan files, scripts, routes, tests, and symbols\n  generate [path]   Generate deterministic mission candidates\n  validate [file]   Validate a quest YAML manifest\n  review [path]     Review local mission evidence\n  approve [path]    Approve all candidates (or pass a mission id)\n  export [path]     Export approved missions as quest.yml\n  play [path]       Start a local contributor workspace on port 4000\n`);
 }
 
 export async function main(argv: readonly string[] = process.argv.slice(2)): Promise<void> {
-  const [command, value] = argv;
+  const [command, value, missionId] = argv;
   const target = resolve(value ?? ".");
 
   if (command === "init") {
@@ -45,6 +46,12 @@ export async function main(argv: readonly string[] = process.argv.slice(2)): Pro
 
   if (command === "review") {
     console.log(formatReviewSummary(await reviewCandidates(target)));
+    return;
+  }
+
+  if (command === "approve") {
+    const count = await approveCandidates(target, missionId);
+    console.log(`Approved ${count} mission candidate${count === 1 ? "" : "s"}`);
     return;
   }
 

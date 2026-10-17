@@ -5,6 +5,7 @@ import { join, isAbsolute } from "node:path";
 import test from "node:test";
 import {
   candidatesPath,
+  approveCandidates,
   exportQuest,
   formatReviewSummary,
   generateCandidatePlan,
@@ -83,6 +84,22 @@ test("review stays pending without evidence and export scrubs non-portable candi
     assert.equal(quest.includes("C:\\\\Users"), false);
     assert.equal(quest.includes("/home/maintainer"), false);
     assert.equal(exported.filePath, questPath(root));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("maintainer approval is explicit before export", async () => {
+  const root = await mkdtemp(join(tmpdir(), "repoquest-cli-"));
+  try {
+    await writeFile(join(root, "package.json"), JSON.stringify({ scripts: { test: "node --test" } }), "utf8");
+    await writeFile(join(root, "entry.ts"), "export const start = () => true;\n", "utf8");
+    await initializeWorkspace(root);
+    await generateCandidatePlan(root);
+    const approved = await approveCandidates(root, "--all");
+    assert.ok(approved > 0);
+    const review = await reviewCandidates(root);
+    assert.equal(review.verified, approved);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

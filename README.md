@@ -69,6 +69,7 @@ After publishing, the intended maintainer/contributor workflow is:
 npx repoquest init
 npx repoquest generate
 npx repoquest review
+npx repoquest approve . --all
 npx repoquest export
 npx repoquest play
 ```

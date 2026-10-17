@@ -219,6 +219,21 @@ export async function readCandidateDocument(repositoryRoot: string): Promise<Can
   };
 }
 
+/** Mark one candidate, or every candidate with `--all` semantics, as maintainer-approved. */
+export async function approveCandidates(repositoryRoot: string, missionId?: string): Promise<number> {
+  const document = await readCandidateDocument(repositoryRoot);
+  const approveAll = missionId === undefined || missionId === "--all";
+  let approvedCount = 0;
+  const candidates = document.candidates.map((candidate) => {
+    if (!approveAll && candidate.id !== missionId) return candidate;
+    approvedCount += 1;
+    return { ...candidate, status: "approved" as const, approval: "approved" as const, approved: true };
+  });
+  if (!approveAll && approvedCount === 0) throw new Error(`Unknown candidate: ${missionId}`);
+  await writeFile(candidatesPath(repositoryRoot), `${JSON.stringify({ mode: document.mode, candidates }, null, 2)}\n`, "utf8");
+  return approvedCount;
+}
+
 function isMissionEvidence(value: unknown): value is MissionEvidence {
   if (!isRecord(value)) return false;
   if (value.stage !== "baseline" && value.stage !== "solver" && value.stage !== "verifier") return false;
