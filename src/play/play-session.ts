@@ -384,11 +384,11 @@ class LocalPlaySession implements PlaySession {
   }
 
   private async startWatching(): Promise<void> {
-    this.previousSnapshot = await snapshotFiles(this.workspaceRoot);
+    this.previousSnapshot = await snapshotFiles(this.repositoryRoot);
     try {
-      const candidate = watch(this.workspaceRoot, { recursive: true }, (event, filename) => {
+      const candidate = watch(this.repositoryRoot, { recursive: true }, (event, filename) => {
         if (filename === null) return;
-        this.addFileChange(event === "rename" ? "rename" : "change", filename.toString());
+        this.syncSourceChange(event === "rename" ? "rename" : "change", filename.toString()).catch(() => undefined);
       });
       candidate.on("error", () => {
         this.startPolling().catch(() => undefined);
@@ -418,18 +418,46 @@ class LocalPlaySession implements PlaySession {
     if (this.pollInFlight || this.disposed) return;
     this.pollInFlight = true;
     try {
-      const next = await snapshotFiles(this.workspaceRoot);
+        const next = await snapshotFiles(this.repositoryRoot);
       const paths = new Set([...this.previousSnapshot.keys(), ...next.keys()]);
       for (const path of paths) {
         const before = this.previousSnapshot.get(path);
         const after = next.get(path);
         if (before === after) continue;
-        this.addFileChange(after === undefined || before === undefined ? "rename" : "change", path);
+        const event = after === undefined || before === undefined ? "rename" : "change";
+        await this.syncSourceChange(event, path);
       }
       this.previousSnapshot = next;
     } finally {
       this.pollInFlight = false;
     }
+  }
+
+  private async syncSourceChange(event: "change" | "rename", filename: string): Promise<void> {
+    const normalized = portablePath(filename);
+    const sourcePath = resolve(this.repositoryRoot, normalized);
+    const workspacePath = resolve(this.workspaceRoot, normalized);
+    if (!isInside(this.repositoryRoot, sourcePath) || !isInside(this.workspaceRoot, workspacePath)) return;
+    if (normalized === "" || normalized.split("/").some((part) => IGNORED_WATCH_DIRECTORIES.has(part))) return;
+    let copied = false;
+    for (let attempt = 0; attempt < 4 && !copied; attempt += 1) {
+      try {
+        const details = await stat(sourcePath);
+        if (details.isDirectory()) {
+          await cp(sourcePath, workspacePath, { recursive: true, force: true });
+        } else {
+          await cp(sourcePath, workspacePath, { force: true });
+        }
+        copied = true;
+      } catch {
+        await new Promise((resolveDelay) => setTimeout(resolveDelay, 20));
+      }
+    }
+    if (!copied) {
+      await rm(workspacePath, { recursive: true, force: true });
+      if (event === "change") return;
+    }
+    this.addFileChange(event, normalized);
   }
 
   private async stopWatching(): Promise<void> {

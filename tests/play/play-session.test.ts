@@ -41,21 +41,21 @@ async function waitForChange(session: Awaited<ReturnType<typeof createPlaySessio
   assert.fail("the play session did not report the changed source file");
 }
 
-test("copies repositories, watches the disposable workspace, and verifies argv commands", async () => {
+test("copies repositories, watches source-editor changes, and verifies argv commands", async () => {
   const fixture = await makeRepository();
-  const original = await readFile(join(fixture.root, "value.txt"), "utf8");
   const session = await createPlaySession({ repositoryRoot: fixture.root, questManifestPath: fixture.quest, pollIntervalMs: 25 });
   const initialWorkspace = session.workspaceRoot;
   try {
     assert.notEqual(initialWorkspace, fixture.root);
-    await writeFile(join(initialWorkspace, "value.txt"), "updated\n");
+    await writeFile(join(fixture.root, "value.txt"), "updated\n");
     await waitForChange(session);
+    assert.equal(await readFile(join(initialWorkspace, "value.txt"), "utf8"), "updated\n");
 
     const verification = await session.verifyMission("check-value");
     assert.equal(verification.passed, true);
     assert.equal(verification.result.status, "passed");
     assert.equal((await session.getState()).progress.completed, 1);
-    assert.equal(await readFile(join(fixture.root, "value.txt"), "utf8"), original);
+    assert.equal(await readFile(join(fixture.root, "value.txt"), "utf8"), "updated\n");
 
     await session.reset();
     assert.notEqual(session.workspaceRoot, initialWorkspace);
