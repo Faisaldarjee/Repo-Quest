@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0d0e13" />
+    <title>RepoQuest — Duolingo for codebases</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="noise"></div>
+    <main class="shell">
+      <header class="topbar">
+        <a class="brand" href="/">
+          <span class="brand-mark">RQ</span>
+          <span><strong>RepoQuest</strong><small>by Faisal Labs</small></span>
+        </a>
+        <div class="top-actions">
+          <span class="status-dot"><i></i> local sandbox</span>
+          <button class="ghost-button" data-action="reset">Reset demo</button>
+        </div>
+      </header>
+
+      <section class="hero">
+        <div class="eyebrow">OPEN-SOURCE ONBOARDING, REIMAGINED</div>
+        <h1>Duolingo<br /><em>for codebases.</em></h1>
+        <p class="hero-copy">Turn a repository into a verified learning journey. AI proposes the quests. A disposable workspace proves they work.</p>
+        <div class="hero-actions">
+          <button class="primary-button" data-action="scan">Scan demo repository <span>→</span></button>
+          <span class="proof"><b>5</b> missions · <b>3</b> real verifiers</span>
+        </div>
+      </section>
+
+      <section class="stats-grid" id="stats"></section>
+
+      <section class="workspace-grid">
+        <div class="panel map-panel">
+          <div class="panel-header">
+            <div><span class="panel-kicker">LEARNER VIEW</span><h2>Quest map</h2></div>
+            <span class="progress-label" id="progress-label">0 / 5 complete</span>
+          </div>
+          <div class="quest-map" id="missions"></div>
+        </div>
+
+        <div class="panel mission-panel">
+          <div class="panel-header">
+            <div><span class="panel-kicker">ACTIVE MISSION</span><h2 id="mission-title">Boot the Shop</h2></div>
+            <span class="difficulty" id="mission-status">AVAILABLE</span>
+          </div>
+          <p class="mission-objective" id="mission-objective">Choose a mission from the map to begin your first verified contribution.</p>
+          <div class="mission-meta" id="mission-meta"></div>
+          <div class="terminal" id="terminal"><div class="terminal-top"><span></span><span></span><span></span><label>repoquest / verifier</label></div><pre id="terminal-output">Waiting for a mission run…</pre></div>
+          <div class="mission-actions" id="mission-actions"></div>
+        </div>
+      </section>
+
+      <section class="bottom-grid">
+        <div class="panel activity-panel">
+          <div class="panel-header"><div><span class="panel-kicker">PROOF OF WORK</span><h2>Agent activity</h2></div><span class="live-label"><i></i> live</span></div>
+          <div class="activity-list" id="activity"></div>
+        </div>
+        <div class="panel principle-panel">
+          <span class="panel-kicker">THE REPOQUEST RULE</span>
+          <blockquote>“A mission is not publishable until the sandbox can solve it.”</blockquote>
+          <div class="principle-line"><span class="check">✓</span><span>AI-generated candidates are inspected before they reach learners.</span></div>
+          <div class="principle-line"><span class="check">✓</span><span>Every attempt runs in a disposable workspace.</span></div>
+        </div>
+      </section>
+
+      <footer><span>RepoQuest is open source.</span><span>Build a quest. Teach a codebase.</span></footer>
+    </main>
+    <div class="toast" id="toast"></div>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
