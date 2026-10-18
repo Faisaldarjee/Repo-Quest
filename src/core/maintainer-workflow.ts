@@ -6,14 +6,20 @@ import {
   type MissionValidationStatus,
 } from "./mission-validation.ts";
 import { type MissionValidationPlan } from "./quest-manifest.ts";
-import { validateSafeCommand } from "./result-model.ts";
+import {
+  type CommandResult,
+  type MissionEvidence,
+  type SafeCommand,
+  type VerificationResult,
+  validateSafeCommand,
+} from "./result-model.ts";
+import { validateMissionCandidate } from "./mission-verifier.ts";
 import {
   planLocalMissions,
   type MissionCandidate,
   type MissionPlan,
 } from "./mission-planner.ts";
 import { scanRepository } from "./repository-scanner.ts";
-import type { MissionEvidence } from "./result-model.ts";
 
 export const REPOQUEST_DIRECTORY = ".repoquest" as const;
 export const QUEST_FILE_NAME = "quest.yml" as const;
@@ -56,6 +62,18 @@ export interface ReviewSummary {
   readonly rejected: number;
   readonly pending: number;
   readonly missions: readonly MissionReview[];
+}
+
+export interface CandidateEvidenceRecord {
+  readonly missionId: string;
+  readonly status: ReviewStatus;
+  readonly reasons: readonly string[];
+  readonly evidence: readonly MissionEvidence[];
+}
+
+export interface CandidateEvidenceDocument {
+  readonly schemaVersion: 1;
+  readonly candidates: readonly CandidateEvidenceRecord[];
 }
 
 export interface ExportResult {
@@ -246,6 +264,67 @@ export async function approveCandidates(repositoryRoot: string, missionId?: stri
   return approvedCount;
 }
 
+export type CandidateValidationInput = CandidateDocument | MissionPlan | readonly CandidateRecord[];
+
+function candidateDocumentFromInput(value: unknown): CandidateDocument {
+  const rawMode = isRecord(value) ? value.mode : undefined;
+  const rawCandidates = Array.isArray(value) ? value : isRecord(value) ? value.candidates : undefined;
+  if (!Array.isArray(rawCandidates)) {
+    throw new TypeError("candidate validation input must contain a candidates array");
+  }
+  if (rawMode !== undefined && rawMode !== "local-rules" && rawMode !== "openai-compatible") {
+    throw new TypeError("candidate validation input has an invalid planner mode");
+  }
+
+  const candidates = rawCandidates.map(candidateFromUnknown);
+  if (candidates.some((candidate): candidate is undefined => candidate === undefined)) {
+    throw new TypeError("candidate validation input contains an invalid candidate");
+  }
+
+  const normalizedCandidates = candidates as CandidateRecord[];
+  const mode = rawMode ?? (normalizedCandidates.length > 0 && normalizedCandidates.every((candidate) => candidate.source === "ai")
+    ? "openai-compatible"
+    : "local-rules");
+  return {
+    mode,
+    candidates: Object.freeze(normalizedCandidates),
+  };
+}
+
+/**
+ * Run the offline baseline/solver/verifier pipeline for stored or supplied
+ * candidates. Only evidence is written: candidate approval remains an
+ * explicit maintainer action, while verified evidence is independently
+ * eligible for export.
+ */
+export async function validateCandidateEvidence(
+  repositoryRoot: string,
+  input?: CandidateValidationInput,
+): Promise<ReviewSummary> {
+  const root = repositoryDirectory(repositoryRoot);
+  const document = input === undefined
+    ? await readCandidateDocument(root)
+    : candidateDocumentFromInput(input);
+  const runs = await Promise.all(document.candidates.map((candidate) => validateMissionCandidate(root, candidate)));
+  const evidenceDocument: CandidateEvidenceDocument = {
+    schemaVersion: 1,
+    candidates: Object.freeze(runs.map((run) => ({
+      missionId: portableMissionId(run.missionId),
+      status: run.status,
+      reasons: Object.freeze(run.reasons.map((reason) => portableText(reason, "Validation completed"))),
+      evidence: Object.freeze(run.evidence.map(portableEvidence)),
+    }))),
+  };
+  await mkdir(repoquestDirectory(root), { recursive: true });
+  await writeFile(evidencePath(root), `${JSON.stringify(evidenceDocument, null, 2)}\n`, "utf8");
+  return reviewCandidateDocument(root, document);
+}
+
+/** Alias matching the CLI-facing candidate terminology. */
+export const validateCandidates = validateCandidateEvidence;
+/** Alias for callers that name the operation after its pipeline. */
+export const runCandidateValidation = validateCandidateEvidence;
+
 function isMissionEvidence(value: unknown): value is MissionEvidence {
   if (!isRecord(value)) return false;
   if (value.stage !== "baseline" && value.stage !== "solver" && value.stage !== "verifier") return false;
@@ -280,8 +359,21 @@ function reviewFromLocalValue(missionId: string, value: unknown): { status: Revi
     return { status: "pending", reasons: ["Awaiting local evidence"] };
   }
   if (!isRecord(value)) return undefined;
+  const nestedEvidence = value.evidence ?? value.evidenceResults;
+  if (Array.isArray(nestedEvidence) && nestedEvidence.length > 0) {
+    const evaluated = evaluateEvidence(missionId, nestedEvidence);
+    if (evaluated !== undefined && evaluated.status !== "pending") {
+      const reasons = Array.isArray(value.reasons)
+        ? value.reasons.filter((reason): reason is string => typeof reason === "string")
+        : [];
+      return reasons.length > 0 ? { status: evaluated.status, reasons } : evaluated;
+    }
+  }
   if (value.approved === true || value.approval === "approved" || value.status === "approved" || value.status === "verified") {
-    return { status: "verified", reasons: ["Marked approved locally"] };
+    const reasons = Array.isArray(value.reasons)
+      ? value.reasons.filter((reason): reason is string => typeof reason === "string")
+      : [];
+    return { status: "verified", reasons: reasons.length > 0 ? reasons : ["Marked approved locally"] };
   }
   if (value.approval === "rejected" || value.status === "rejected") {
     const reasons = Array.isArray(value.reasons)
@@ -289,7 +381,17 @@ function reviewFromLocalValue(missionId: string, value: unknown): { status: Revi
       : ["Marked rejected locally"];
     return { status: "rejected", reasons };
   }
-  return reviewFromLocalValue(missionId, value.evidence ?? value.evidenceResults);
+  if (value.status === "pending" || value.status === "candidate") {
+    const reasons = Array.isArray(value.reasons)
+      ? value.reasons.filter((reason): reason is string => typeof reason === "string")
+      : [];
+    return { status: "pending", reasons: reasons.length > 0 ? reasons : ["Awaiting local evidence"] };
+  }
+  if (Array.isArray(nestedEvidence)) {
+    const evaluated = evaluateEvidence(missionId, nestedEvidence);
+    if (evaluated !== undefined) return evaluated;
+  }
+  return undefined;
 }
 
 function explicitReview(candidate: CandidateRecord): { status: ReviewStatus; reasons: readonly string[] } | undefined {
@@ -323,6 +425,11 @@ function evidenceForCandidate(document: unknown, candidate: CandidateRecord): un
   }
   if (!isRecord(document)) return undefined;
   const candidates = document.candidates;
+  if (Array.isArray(candidates)) {
+    const matching = candidates.find((entry) => isRecord(entry) &&
+      (entry.missionId === candidate.id || entry.missionId === portableMissionId(candidate.id)));
+    if (isRecord(matching)) return matching;
+  }
   if (isRecord(candidates) && candidate.id in candidates) return candidates[candidate.id];
   if (Array.isArray(document.verified) && document.verified.includes(candidate.id)) return "verified";
   if (Array.isArray(document.rejected) && document.rejected.includes(candidate.id)) return "rejected";
@@ -333,9 +440,13 @@ function evidenceForCandidate(document: unknown, candidate: CandidateRecord): un
 async function reviewCandidateDocument(repositoryRoot: string, document: CandidateDocument): Promise<ReviewSummary> {
   const evidenceDocument = await readEvidenceDocument(repositoryRoot);
   const missions = document.candidates.map((candidate) => {
-    const evidence = reviewFromLocalValue(candidate.id, evidenceForCandidate(evidenceDocument, candidate)) ??
-      reviewFromLocalValue(candidate.id, candidate.evidenceResults) ??
-      explicitReview(candidate) ?? {
+    const explicit = explicitReview(candidate);
+    const persistedEvidence = reviewFromLocalValue(candidate.id, evidenceForCandidate(evidenceDocument, candidate));
+    const candidateEvidence = reviewFromLocalValue(candidate.id, candidate.evidenceResults);
+    const evidence = (explicit !== undefined && explicit.status !== "pending" ? explicit : undefined) ??
+      persistedEvidence ??
+      candidateEvidence ??
+      explicit ?? {
         status: "pending" as const,
         reasons: ["Awaiting local evidence"],
       };
@@ -377,19 +488,73 @@ export function formatReviewSummary(summary: ReviewSummary): string {
 
 function redactSecrets(value: string): string {
   return value
-    .replace(/(api[_-]?key|token|secret|password)\s*[:=]\s*["']?[^\s,"']+/gi, "$1=[REDACTED]")
+    .replace(/((?:api[_-]?key|token|secret|password|authorization)\b\s*["']?\s*[:=]\s*["']?)[^\s,"'}]+/gi, "$1[REDACTED]")
+    .replace(/(--?(?:api[_-]?key|token|secret|password|authorization)\s+)[^\s,"'}]+/gi, "$1[REDACTED]")
     .replace(/Bearer\s+[A-Za-z0-9._~+\-/]+=*/gi, "Bearer [REDACTED]");
 }
 
 function removeAbsolutePaths(value: string): string {
   return value
     .replace(/(?:[A-Za-z]:[\\/]|\\\\|\/(?:Users|home|tmp|var|private|workspace|mnt|opt|root)(?:[\\/]|$))[^\s,'"`]+/gi, "[path]")
-    .replace(/(^|\s)\/[^\s,'"`]+/g, "$1[path]");
+    .replace(/(^|[\s"'`=:,(\[])\/[^\s,'"`)\]]+/g, "$1[path]");
 }
 
 function portableText(value: string, fallback: string): string {
   const clean = removeAbsolutePaths(redactSecrets(value).replaceAll("\u0000", "")).trim();
   return clean.length > 0 ? clean : fallback;
+}
+
+function portableMissionId(value: string): string {
+  return portableId(value, "mission");
+}
+
+function portableCommand(command: SafeCommand): SafeCommand {
+  const normalizedExecutable = command.executable.replaceAll("\\", "/");
+  const executableToken = normalizedExecutable.slice(normalizedExecutable.lastIndexOf("/") + 1);
+  const cwd = command.cwd?.replaceAll("\\", "/");
+  return {
+    executable: portableText(executableToken, "node"),
+    args: Object.freeze(command.args.map((arg) => portableText(arg, ""))),
+    ...(cwd !== undefined && isPortablePath(cwd) ? { cwd } : {}),
+    ...(command.timeoutMs === undefined ? {} : { timeoutMs: command.timeoutMs }),
+  };
+}
+
+function portableCommandResult(result: CommandResult): CommandResult {
+  return {
+    kind: "command",
+    command: portableCommand(result.command),
+    status: result.status,
+    exitCode: result.exitCode,
+    stdout: portableText(result.stdout, ""),
+    stderr: portableText(result.stderr, ""),
+    durationMs: result.durationMs,
+    ...(result.error === undefined ? {} : { error: portableText(result.error, "Command failed") }),
+  };
+}
+
+function portableVerificationResult(result: VerificationResult): VerificationResult {
+  return {
+    kind: "verification",
+    outcome: result.outcome,
+    summary: portableText(result.summary, ""),
+    checks: Object.freeze(result.checks.map((check) => ({
+      name: portableText(check.name, "check"),
+      outcome: check.outcome,
+      ...(check.detail === undefined ? {} : { detail: portableText(check.detail, "") }),
+    }))),
+    ...(result.commandResult === undefined ? {} : { commandResult: portableCommandResult(result.commandResult) }),
+  };
+}
+
+function portableEvidence(evidence: MissionEvidence): MissionEvidence {
+  return {
+    stage: evidence.stage,
+    result: evidence.result.kind === "command"
+      ? portableCommandResult(evidence.result)
+      : portableVerificationResult(evidence.result),
+    ...(evidence.note === undefined ? {} : { note: portableText(evidence.note, "") }),
+  };
 }
 
 function portableId(value: string, fallback: string): string {

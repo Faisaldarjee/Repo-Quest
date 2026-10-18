@@ -6,12 +6,14 @@ import test from "node:test";
 import {
   candidatesPath,
   approveCandidates,
+  evidencePath,
   exportQuest,
   formatReviewSummary,
   generateCandidatePlan,
   initializeWorkspace,
   questPath,
   reviewCandidates,
+  validateCandidateEvidence,
 } from "../../src/core/maintainer-workflow.ts";
 
 test("init does not clobber an existing quest and creates the config", async () => {
@@ -100,6 +102,97 @@ test("maintainer approval is explicit before export", async () => {
     assert.ok(approved > 0);
     const review = await reviewCandidates(root);
     assert.equal(review.verified, approved);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("candidate validation runs the offline pipeline and persists portable evidence", async () => {
+  const root = await mkdtemp(join(tmpdir(), "repoquest-cli-"));
+  try {
+    await writeFile(join(root, "package.json"), JSON.stringify({ scripts: { test: "node --test" } }), "utf8");
+    await writeFile(join(root, "entry.ts"), "export const start = () => true;\n", "utf8");
+    await initializeWorkspace(root);
+    await generateCandidatePlan(root);
+
+    const summary = await validateCandidateEvidence(root);
+    assert.equal(summary.rejected, 0);
+    assert.ok(summary.verified > 0);
+    assert.equal(summary.pending, 0);
+
+    const candidates = JSON.parse(await readFile(candidatesPath(root), "utf8")) as {
+      candidates: Array<Record<string, unknown>>;
+    };
+    assert.equal(candidates.candidates.some((candidate) => candidate.approved === true), false);
+
+    const rawEvidence = await readFile(evidencePath(root), "utf8");
+    const evidence = JSON.parse(rawEvidence) as {
+      schemaVersion: number;
+      candidates: Array<{ status: string; evidence: unknown[] }>;
+    };
+    assert.equal(evidence.schemaVersion, 1);
+    assert.equal(evidence.candidates.length, candidates.candidates.length);
+    assert.ok(evidence.candidates.every((candidate) => candidate.evidence.length > 0));
+    assert.equal(rawEvidence.includes(root), false);
+    assert.equal(rawEvidence.includes("C:\\Users"), false);
+
+    const exported = await exportQuest(root);
+    assert.equal(exported.missionCount, summary.verified);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("candidate validation returns per-candidate rejection reasons without leaking command data", async () => {
+  const root = await mkdtemp(join(tmpdir(), "repoquest-cli-"));
+  try {
+    const passCommand = {
+      executable: "node",
+      args: ["-e", "process.stdout.write('token=super-secret C:/Users/maintainer/repo')"],
+      timeoutMs: 5_000,
+    };
+    const failCommand = {
+      executable: "node",
+      args: ["-e", "process.stderr.write('password=still-secret'); process.exit(2)"],
+      timeoutMs: 5_000,
+    };
+    const candidates = [
+      {
+        id: "passes-with-sensitive-output",
+        title: "Passes",
+        objective: "Run the checks",
+        concept: "Testing",
+        difficulty: "beginner",
+        evidence: "command",
+        targetFiles: [],
+        source: "local-rules",
+        validation: { baseline: passCommand, solver: passCommand, verifier: passCommand },
+      },
+      {
+        id: "fails-the-solver",
+        title: "Fails",
+        objective: "Find the failure",
+        concept: "Testing",
+        difficulty: "beginner",
+        evidence: "command",
+        targetFiles: [],
+        source: "local-rules",
+        validation: { baseline: passCommand, solver: failCommand, verifier: passCommand },
+      },
+    ] as const;
+
+    const summary = await validateCandidateEvidence(root, candidates);
+    assert.equal(summary.verified, 1);
+    assert.equal(summary.rejected, 1);
+    assert.equal(summary.pending, 0);
+    assert.deepEqual(summary.missions.map((mission) => mission.status), ["verified", "rejected"]);
+    assert.match(summary.missions[1]?.reasons.join(" ") ?? "", /Solver evidence failed/);
+
+    const rawEvidence = await readFile(evidencePath(root), "utf8");
+    assert.equal(rawEvidence.includes("super-secret"), false);
+    assert.equal(rawEvidence.includes("still-secret"), false);
+    assert.equal(rawEvidence.includes("C:/Users"), false);
+    assert.equal(rawEvidence.includes(root), false);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

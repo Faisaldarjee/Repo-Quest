@@ -8,6 +8,7 @@ const state = {
   preview: false,
   hints: {},
   lastChangeCount: null,
+  candidates: null,
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -50,6 +51,23 @@ function selectedMission(data) {
   return data?.missions?.find((mission) => mission.id === state.selected) || data?.missions?.[0];
 }
 
+function renderCandidateLab() {
+  const lab = $("#candidate-lab");
+  if (!state.candidates?.review) {
+    lab.hidden = true;
+    return;
+  }
+  lab.hidden = false;
+  const review = state.candidates.review;
+  $("#candidate-summary").textContent = `${review.verified} verified · ${review.rejected} rejected · ${review.pending} pending`;
+  $("#candidate-grid").innerHTML = (review.missions || []).map((mission) => `
+    <div class="candidate-card ${escapeHtml(mission.status)}">
+      <div><strong>${escapeHtml(mission.title)}</strong><small>${escapeHtml(mission.id)}</small></div>
+      <span>${escapeHtml(mission.status.toUpperCase())}</span>
+      <p>${escapeHtml(mission.reasons.join(" · "))}</p>
+    </div>`).join("");
+}
+
 function resultCommand(result) {
   return result?.result?.command || result?.command;
 }
@@ -81,7 +99,7 @@ function renderLanding() {
   const button = $(".scan-button");
   const label = button?.querySelector(".button-label");
   const verifierCount = state.data?.missions?.filter((mission) => Boolean(mission.validation)).length;
-  $("#scan-repo-label").textContent = state.data?.manifest?.id ? `SCAN / ${state.data.manifest.id}` : "SCAN / LOCAL FIXTURE";
+  $("#scan-repo-label").textContent = state.data?.manifest?.id ? `SCAN / ${state.data.manifest.id}` : "SCAN / REPOSITORY";
   $("#hero-proof").textContent = state.preview
     ? "Public preview. Generated locally. Not maintainer-reviewed."
     : verifierCount === undefined
@@ -170,7 +188,8 @@ function renderMissionPanel(data) {
   const terminalStatus = result?.error ? "ERROR" : result ? (result.passed ? "PASSED" : "FAILED") : "STANDBY";
   const statusClass = result?.error ? "error" : result ? (result.passed ? "passed" : "failed") : status;
   const hasVerifier = Boolean(mission.validation?.verifier);
-  const fixMission = mission.id === "fix-invalid-login";
+  const mutationMissionId = data.demo?.mutationMissionId;
+  const fixMission = mutationMissionId !== undefined && mission.id === mutationMissionId;
   const fixCompleted = fixMission && status === "completed";
 
   $("#mission-title").textContent = mission.title;
@@ -235,12 +254,18 @@ function render() {
   renderMissions(state.data);
   renderMissionPanel(state.data);
   renderActivity(state.data);
+  renderCandidateLab();
   document.body.classList.toggle("has-success", state.lastResult?.passed === true);
 }
 
 async function refresh() {
   state.data = await api("/api/state");
   if (state.lastChangeCount === null) state.lastChangeCount = state.data.fileChanges?.length || 0;
+  try {
+    state.candidates = await api("/api/candidates");
+  } catch {
+    state.candidates = null;
+  }
   render();
 }
 
@@ -254,7 +279,7 @@ async function watchEditorChanges() {
     state.data = data;
     if (!changed) return;
     const mission = selectedMission(data);
-    const canAutoVerify = mission?.status === "available" && Boolean(mission.validation?.verifier) && (mission.id !== "fix-invalid-login" || data.seededBug);
+    const canAutoVerify = mission?.status === "available" && Boolean(mission.validation?.verifier) && (data.demo?.mutationMissionId !== mission?.id || data.demo.seeded);
     render();
     if (!canAutoVerify) return;
     state.busy = true;
@@ -318,9 +343,16 @@ async function handleAction(event) {
       state.hasScanned = true;
       state.preview = true;
       state.lastResult = null;
+      state.candidates = null;
       state.scanning = false;
       render();
       toast("Community preview ready — maintainer review required", "success");
+    } else if (action === "validate-candidates") {
+      toast("Running baseline, solver, and verifier stages in disposable copies…");
+      state.candidates = await api("/api/validate-candidates", { method: "POST", body: "{}" });
+      render();
+      const review = state.candidates.review;
+      toast(`${review.verified} verified · ${review.rejected} rejected · ${review.pending} pending`, review.rejected > 0 ? "error" : "success");
     } else if (action === "hint") {
       const missionId = button.dataset.missionId;
       state.hints[missionId] = (state.hints[missionId] || 0) + 1;

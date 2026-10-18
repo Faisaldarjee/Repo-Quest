@@ -47,7 +47,7 @@
             </div>
 
             <div class="scan-card" aria-label="Repository scan status">
-              <div class="scan-card-top"><span class="panel-kicker" id="scan-repo-label">SCAN / LOCAL FIXTURE</span><span class="scan-state" id="scan-state">READY</span></div>
+              <div class="scan-card-top"><span class="panel-kicker" id="scan-repo-label">SCAN / REPOSITORY</span><span class="scan-state" id="scan-state">READY</span></div>
               <div class="scan-orbit" aria-hidden="true">
                 <span class="orbit-ring ring-a"></span><span class="orbit-ring ring-b"></span>
                 <span class="orbit-line line-a"></span><span class="orbit-line line-b"></span>
@@ -74,15 +74,20 @@
               <div class="eyebrow"><span class="eyebrow-rule"></span> live repository map</div>
               <h2 id="workspace-title">Your first contribution starts here.</h2>
             </div>
-            <div class="workspace-mode"><span class="mode-dot"></span><span id="workspace-mode-text">workspace / <b>disposable</b></span></div>
+            <div class="workspace-tools"><button class="review-button" data-action="validate-candidates" type="button">Validate generated missions ↗</button><div class="workspace-mode"><span class="mode-dot"></span><span id="workspace-mode-text">workspace / <b>disposable</b></span></div></div>
           </div>
 
           <div class="telemetry-grid" id="stats"></div>
+          <section class="candidate-lab panel" id="candidate-lab" hidden>
+            <div class="panel-header"><div><span class="panel-kicker">MAINTAINER MODE / SOLVER PROOF</span><h3>Candidate lab</h3></div><span class="candidate-summary" id="candidate-summary">not verified</span></div>
+            <p class="panel-description">AI and local rules may propose missions. Only disposable-workspace evidence can move one toward approval.</p>
+            <div class="candidate-grid" id="candidate-grid"></div>
+          </section>
 
           <div class="workspace-grid">
             <section class="panel graph-panel" aria-labelledby="map-title">
               <div class="panel-header">
-                <div><span class="panel-kicker">REPOSITORY GRAPH / MISSION PATH</span><h3 id="map-title">Quest Shop Onboarding</h3></div>
+                <div><span class="panel-kicker">REPOSITORY GRAPH / MISSION PATH</span><h3 id="map-title">Repository onboarding</h3></div>
                 <span class="progress-label" id="progress-label">0 / 0 complete</span>
               </div>
               <p class="panel-description" id="manifest-description">A living map of the repository, with each step unlocked by the one before it.</p>

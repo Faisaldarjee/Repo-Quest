@@ -10,6 +10,11 @@ import {
 } from "./demo/demo-repository.ts";
 import { createPlaySession, type PlaySession, type PlayState } from "./play/index.ts";
 import { createGitHubPreview } from "./preview/github-preview.ts";
+import {
+  readCandidateDocument,
+  reviewCandidates,
+  validateCandidateEvidence,
+} from "./core/maintainer-workflow.ts";
 
 const ROOT = process.cwd();
 const PUBLIC_ROOT = join(ROOT, "public");
@@ -99,6 +104,7 @@ function stateWithCompatibility(state: PlayState, demoState: DemoCompatibilitySt
   readonly product: { readonly name: string; readonly brand: string; readonly tagline: string };
   readonly planner: { readonly mode: string; readonly candidates: number };
   readonly seededBug: boolean;
+  readonly demo?: { readonly mutationMissionId: string; readonly seeded: boolean };
 } {
   const planner = planLocalMissions(state.project.scan);
   return {
@@ -110,6 +116,9 @@ function stateWithCompatibility(state: PlayState, demoState: DemoCompatibilitySt
     },
     planner: { mode: planner.mode, candidates: planner.candidates.length },
     seededBug: demoState.seededBug,
+    ...(isDefaultDemoRepository(state.project.repositoryRoot)
+      ? { demo: { mutationMissionId: "fix-invalid-login", seeded: demoState.seededBug } }
+      : {}),
   };
 }
 
@@ -193,6 +202,28 @@ export async function createRepoQuestServer(options: RepoQuestServerOptions = {}
 
     if (request.method === "GET" && url.pathname === "/api/state") {
       sendJson(response, 200, stateWithCompatibility(await session.getState(), demoState));
+      return;
+    }
+
+    if (request.method === "GET" && url.pathname === "/api/candidates") {
+      try {
+        const document = await readCandidateDocument(session.repositoryRoot);
+        const review = await reviewCandidates(session.repositoryRoot);
+        sendJson(response, 200, { ...document, review });
+      } catch (error) {
+        sendJson(response, 404, { error: error instanceof Error ? error.message : "No generated candidates found" });
+      }
+      return;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/validate-candidates") {
+      try {
+        const review = await validateCandidateEvidence(session.repositoryRoot);
+        const document = await readCandidateDocument(session.repositoryRoot);
+        sendJson(response, 200, { ...document, review });
+      } catch (error) {
+        sendJson(response, 400, { error: error instanceof Error ? error.message : "Candidate validation failed" });
+      }
       return;
     }
 

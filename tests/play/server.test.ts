@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -8,6 +8,21 @@ import { startRepoQuestServer } from "../../src/server.ts";
 test("serves generic project, quest, state, verify, and reset endpoints", async () => {
   const root = await mkdtemp(join(tmpdir(), "repoquest-server-test-"));
   await writeFile(join(root, "check.js"), "process.exit(0);\n");
+  await writeFile(join(root, "package.json"), JSON.stringify({ scripts: { test: "node check.js" } }));
+  await mkdir(join(root, ".repoquest"), { recursive: true });
+  await writeFile(join(root, ".repoquest", "candidates.json"), JSON.stringify({
+    mode: "local-rules",
+    candidates: [{
+      id: "boot-project",
+      title: "Boot project",
+      objective: "Run the project test script.",
+      concept: "setup",
+      difficulty: "beginner",
+      evidence: "command",
+      targetFiles: ["package.json"],
+      source: "local-rules",
+    }],
+  }));
   const quest = join(root, "quest.yml");
   await writeFile(
     quest,
@@ -38,6 +53,15 @@ test("serves generic project, quest, state, verify, and reset endpoints", async 
 
     const questResponse = await fetch(url("/api/quest"));
     assert.equal((await questResponse.json()).id, "endpoint-play");
+
+    const candidatesResponse = await fetch(url("/api/candidates"));
+    assert.equal(candidatesResponse.status, 200);
+    assert.equal((await candidatesResponse.json()).review.pending, 1);
+
+    const candidateValidation = await fetch(url("/api/validate-candidates"), { method: "POST" });
+    const candidateResult = await candidateValidation.json();
+    assert.equal(candidateValidation.status, 200);
+    assert.equal(candidateResult.review.verified, 1);
 
     const verifyResponse = await fetch(url("/api/verify"), {
       method: "POST",

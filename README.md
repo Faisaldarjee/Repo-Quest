@@ -68,6 +68,7 @@ After publishing, the intended maintainer/contributor workflow is:
 ```bash
 npx repoquest init
 npx repoquest generate
+npx repoquest verify
 npx repoquest review
 npx repoquest approve . --all
 npx repoquest export
